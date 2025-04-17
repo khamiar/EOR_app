@@ -1,6 +1,9 @@
+
 # eoreporter_v1
 
-A new Flutter project.
+# EOR_app
+
+A Flutter-based mobile app UI for the Electricity Outage Reporter system.
 
 ## Getting Started
 
