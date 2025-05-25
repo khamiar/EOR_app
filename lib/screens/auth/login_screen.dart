@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:eoreporter_v1/constants/app_constants.dart';
+import 'package:eoreporter_v1/services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -12,23 +13,17 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _authService = AuthService();
   bool _isPasswordVisible = false;
   bool _isLoading = false;
   AnimationController? _animationController;
   Animation<double>? _fadeAnimation;
   Animation<Offset>? _slideAnimation;
 
-  // Test credentials
-  static const String testEmail = 'test@example.com';
-  static const String testPassword = 'password123';
-
   @override
   void initState() {
     super.initState();
     _initializeAnimations();
-    // Pre-fill test credentials
-    _emailController.text = testEmail;
-    _passwordController.text = testPassword;
   }
 
   void _initializeAnimations() {
@@ -78,30 +73,45 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       });
 
       try {
-        // Simulate network delay
-        await Future.delayed(const Duration(seconds: 1));
-        
-        // Check credentials
-        if (_emailController.text == testEmail && _passwordController.text == testPassword) {
-          if (mounted) {
-            Navigator.of(context).pushReplacementNamed('/home');
-          }
-        } else {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Invalid email or password'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
+        final user = await _authService.login(
+          _emailController.text.trim(),
+          _passwordController.text,
+        );
+
+        if (mounted) {
+          Navigator.of(context).pushReplacementNamed('/home');
         }
       } catch (e) {
         if (mounted) {
+          String errorMessage = e.toString();
+          // Remove "Exception: " prefix if it exists
+          if (errorMessage.startsWith('Exception: ')) {
+            errorMessage = errorMessage.substring('Exception: '.length);
+          }
+          
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Error: ${e.toString()}'),
+              content: Row(
+                children: [
+                  const Icon(Icons.error_outline, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      errorMessage,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
               backgroundColor: Colors.red,
+              duration: const Duration(seconds: 5),
+              action: SnackBarAction(
+                label: 'Dismiss',
+                textColor: Colors.white,
+                onPressed: () {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                },
+              ),
             ),
           );
         }
@@ -123,6 +133,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       //   showBackButton: true,
       // ),
       body: Container(
+        height: MediaQuery.of(context).size.height,
+        width: MediaQuery.of(context).size.width,
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
@@ -131,6 +143,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               AppConstants.primaryColor.withOpacity(0.8),
               Colors.white,
             ],
+            stops: const [0.0, 1.0], // Ensures smooth gradient distribution
           ),
         ),
         child: SafeArea(
@@ -161,7 +174,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                   ),
                                 ],
                               ),
-                              child: Center(
+                              child: const Center(
                                 child: Icon(
                                   Icons.electric_bolt,
                                   size: 60,
@@ -171,7 +184,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             ),
                           ),
                           const SizedBox(height: 20),
-                          Text(
+                          const Text(
                             'Welcome Back!',
                             textAlign: TextAlign.center,
                             style: TextStyle(
@@ -229,7 +242,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                       if (value == null || value.isEmpty) {
                                         return 'Please enter your email';
                                       }
-                                      if (!value.contains('@')) {
+                                      if (!value.contains('@') || !value.contains('.')) {
                                         return 'Please enter a valid email';
                                       }
                                       return null;
@@ -283,7 +296,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                       onPressed: () {
                                         // TODO: Implement forgot password
                                       },
-                                      child: Text(
+                                      child: const Text(
                                         'Forgot Password?',
                                         style: TextStyle(
                                           color: AppConstants.primaryColor,
@@ -320,65 +333,42 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                                 fontWeight: FontWeight.bold,
                                               ),
                                             ),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 20),
+                                        // Register Link
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                                          child: Row(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              Flexible(
+                                                child: Text(
+                                                  "Don't have an account?",
+                                                  style: TextStyle(
+                                                    color: Colors.grey[600],
+                                                    fontSize: 14,
+                                                  ),
+                                                ),
+                                              ),
+                                              TextButton(
+                                                onPressed: () {
+                                                  Navigator.pushNamed(context, '/register');
+                                                  // Navigator.pushReplacementNamed(context, '/register');
+                                                },
+                                                child: const Text(
+                                                  'Register',
+                                                  style: TextStyle(
+                                                    fontSize: 14,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                     ),
                                   ),
-                                  const SizedBox(height: 20),
-                                  // Test Credentials Info
-                                  // Container(
-                                  //   padding: const EdgeInsets.all(10),
-                                  //   decoration: BoxDecoration(
-                                  //     color: Colors.grey[100],
-                                  //     borderRadius: BorderRadius.circular(10),
-                                  //   ),
-                                  //   child: Column(
-                                  //      crossAxisAlignment: CrossAxisAlignment.start,
-                                  //      children: [
-                                  //        Text(
-                                  //          'Test Credentials:',
-                                  //          style: TextStyle(
-                                  //            fontWeight: FontWeight.bold,
-                                  //            color: Colors.grey[700],
-                                  //          ),
-                                  //        ),
-                                  //        const SizedBox(height: 5),
-                                  //        Text('Email: $testEmail'),
-                                  //        Text('Password: $testPassword'),
-                                  //      ],
-                                  //    ),
-                                  // ),
                                 ],
                               ),
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          // Register Link
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    "Don't have an account?",
-                                    style: TextStyle(
-                                      color: Colors.grey[600],
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ),
-                                TextButton(
-                                  onPressed: () {
-                                    Navigator.pushNamed(context, '/register');
-                                  },
-                                  child: const Text(
-                                    'Register',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ],
                             ),
                           ),
                         ],

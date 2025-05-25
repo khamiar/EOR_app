@@ -145,7 +145,7 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: AppConstants.primaryColor),
+                  borderSide: const BorderSide(color: AppConstants.primaryColor),
                 ),
                 filled: true,
                 fillColor: Colors.grey[50],

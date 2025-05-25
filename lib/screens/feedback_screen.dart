@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:eoreporter_v1/constants/app_constants.dart';
 import 'package:eoreporter_v1/utils/animations.dart';
-import 'package:eoreporter_v1/widgets/custom_app_bar.dart';
 
 class FeedbackScreen extends StatefulWidget {
   const FeedbackScreen({super.key});
@@ -52,11 +51,11 @@ class _FeedbackScreenState extends State<FeedbackScreen> with SingleTickerProvid
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Row(
+            content: const Row(
               children: [
-                const Icon(Icons.check_circle, color: Colors.white),
-                const SizedBox(width: 8),
-                const Text('Feedback submitted successfully'),
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 8),
+                Text('Feedback submitted successfully'),
               ],
             ),
             backgroundColor: Colors.green,

@@ -52,7 +52,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
         );
         break;
       case 'announcement':
-        Navigator.pushNamed(
+        Navigator.pushReplacementNamed(
           context,
           '/home',
           arguments: {
@@ -62,12 +62,82 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
         );
         break;
       case 'feedback_response':
-        Navigator.pushNamed(
-          context,
-          '/feedback',
-          arguments: {
-            'feedbackId': data['feedbackId'],
-          },
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (context) => Container(
+            height: MediaQuery.of(context).size.height * 0.7,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.feedback,
+                        color: Colors.green,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          'Feedback Response',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Your feedback has been reviewed and addressed.',
+                          style: TextStyle(fontSize: 16),
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Response:',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Thank you for your feedback. We have reviewed your concerns and are working on implementing the suggested improvements. Your input is valuable in helping us provide better service.',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         );
         break;
       case 'profile_update':
@@ -263,7 +333,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
   Color _getNotificationColor(String type) {
     switch (type) {
       case 'outage_report':
-        return Colors.orange;
+        return Colors.yellow;
       case 'announcement':
         return Colors.blue;
       case 'feedback_response':
@@ -278,7 +348,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
   IconData _getNotificationIcon(String type) {
     switch (type) {
       case 'outage_report':
-        return Icons.report_problem;
+        return Icons.info;
       case 'announcement':
         return Icons.announcement;
       case 'feedback_response':

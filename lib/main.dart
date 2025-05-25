@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:eoreporter_v1/constants/app_constants.dart';
+import 'package:eoreporter_v1/providers/auth_provider.dart';
 import 'package:eoreporter_v1/screens/splash_screen.dart';
 import 'package:eoreporter_v1/screens/auth/login_screen.dart';
 import 'package:eoreporter_v1/screens/auth/register_screen.dart';
@@ -11,7 +13,14 @@ import 'package:eoreporter_v1/screens/notifications_screen.dart';
 import 'package:eoreporter_v1/screens/profile_screen.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AuthProvider()),
+      ],
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -25,17 +34,17 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: AppConstants.primaryColor),
         useMaterial3: true,
-        appBarTheme: AppBarTheme(
+        appBarTheme: const AppBarTheme(
           backgroundColor: AppConstants.primaryColor,
           foregroundColor: Colors.white,
           elevation: 0,
           centerTitle: true,
-          titleTextStyle: const TextStyle(
+          titleTextStyle: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
             color: Colors.white,
           ),
-          iconTheme: const IconThemeData(
+          iconTheme: IconThemeData(
             color: Colors.white,
           ),
         ),
@@ -67,16 +76,16 @@ class MyApp extends StatelessWidget {
         '/profile': (context) => const ProfileScreen(),
       },
       // Handle unknown routes
-      onGenerateRoute: (settings) {
-        // You can add custom route handling here if needed
-        return MaterialPageRoute(
-          builder: (context) => const Scaffold(
-            body: Center(
-              child: Text('Page not found'),
-            ),
-          ),
-        );
-      },
+      // onGenerateRoute: (settings) {
+      //   // You can add custom route handling here if needed
+      //   return MaterialPageRoute(
+      //     builder: (context) => const Scaffold(
+      //       body: Center(
+      //         child: Text('Page not found'),
+      //       ),
+      //     ),
+      //   );
+      // },
     );
   }
 }

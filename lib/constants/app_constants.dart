@@ -1,9 +1,32 @@
 import 'package:flutter/material.dart';
 
 class AppConstants {
-  static const String appName = 'Electricity Outage Reporter';
+  // API Configuration
+  static const String apiBaseUrl = 'http://192.168.1.7:8080/api';
   
-  // Colors
+  // App Configuration
+  static const String appName = 'EOReporter';
+  static const String appVersion = '1.0.0';
+  
+  // Storage Keys
+  static const String tokenKey = 'jwt_token';
+  static const String userKey = 'user_data';
+  
+  // API Endpoints
+  static const String loginEndpoint = '/auth/authenticate';
+  static const String registerEndpoint = '/auth/register';
+  static const String logoutEndpoint = '/auth/logout';
+  static const String profileEndpoint = '/auth/profile';
+  static const String outagesEndpoint = '/outages';
+  static const String notificationsEndpoint = '/notifications';
+  
+  // Error Messages
+  static const String networkError = 'Network error. Please check your internet connection.';
+  static const String serverError = 'Server error. Please try again later.';
+  static const String authError = 'Authentication failed. Please login again.';
+  static const String unknownError = 'An unknown error occurred. Please try again.';
+  
+  // Colors Themes
   static const Color primaryColor = Color(0xFF2196F3);
   static const Color secondaryColor = Color(0xFF03A9F4);
   static const Color accentColor = Color(0xFF00BCD4);

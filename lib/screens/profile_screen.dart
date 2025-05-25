@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:eoreporter_v1/constants/app_constants.dart';
 import 'package:eoreporter_v1/widgets/custom_app_bar.dart';
+import 'package:eoreporter_v1/services/auth_service.dart';
+import 'package:eoreporter_v1/models/user.dart';
+import 'package:eoreporter_v1/widgets/user_avatar.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -14,19 +17,66 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _addressController = TextEditingController();
   final _currentPasswordController = TextEditingController();
   final _newPasswordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  
+  final AuthService _authService = AuthService();
+  User? _currentUser;
   bool _isEditing = false;
   bool _isChangingPassword = false;
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    // Set initial values (in a real app, these would come from user data)
-    _nameController.text = 'John Doe';
-    _emailController.text = 'john.doe@example.com';
-    _phoneController.text = '+1 234 567 8900';
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    try {
+      final user = await _authService.getCurrentUser();
+      if (mounted) {
+        setState(() {
+          _currentUser = user;
+          _nameController.text = user?.fullName ?? '';
+          _emailController.text = user?.email ?? '';
+          _phoneController.text = user?.phoneNumber ?? '';
+          _addressController.text = user?.address ?? '';
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading user data: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  String _getInitials(String? fullName, String? email) {
+    if (fullName != null && fullName.isNotEmpty) {
+      final names = fullName.trim().split(' ');
+      if (names.length >= 2) {
+        return '${names[0][0]}${names[1][0]}'.toUpperCase();
+      } else if (names.isNotEmpty) {
+        return names[0][0].toUpperCase();
+      }
+    }
+    
+    if (email != null && email.isNotEmpty) {
+      return email[0].toUpperCase();
+    }
+    
+    return 'U';
   }
 
   @override
@@ -34,6 +84,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _addressController.dispose();
     _currentPasswordController.dispose();
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
@@ -45,7 +96,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _isEditing = !_isEditing;
       if (!_isEditing) {
         // Reset form if canceling edit
-        _formKey.currentState?.reset();
+        _loadUserData();
       }
     });
   }
@@ -64,7 +115,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _saveProfile() {
     if (_formKey.currentState!.validate()) {
-      // TODO: Implement profile update
+      // TODO: Implement profile update API call
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Profile updated successfully'),
@@ -88,7 +139,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
         return;
       }
-      // TODO: Implement password change
+      // TODO: Implement password change API call
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Password changed successfully'),
@@ -104,17 +155,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  void _logout() {
-    // TODO: Implement logout
+  void _logout() async {
+    await _authService.logout();
+    if (mounted) {
     Navigator.of(context).pushReplacementNamed('/login');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        appBar: CustomAppBar(
+          title: 'Profile',
+          showBackButton: true,
+          onBackPressed: () {
+            Navigator.of(context).pushReplacementNamed('/home');
+          },
+          showProfileAvatar: false,
+        ),
+        body: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
     return Scaffold(
-      appBar: const CustomAppBar(
+      appBar: CustomAppBar(
         title: 'Profile',
         showBackButton: true,
+        onBackPressed: () {
+          Navigator.of(context).pushReplacementNamed('/home');
+        },
+        showProfileAvatar: false,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(AppConstants.defaultPadding),
@@ -123,12 +196,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Profile Picture
+              // Profile Picture with Initials
               Stack(
                 children: [
-                  const CircleAvatar(
+                  UserAvatar(
+                    fullName: _currentUser?.fullName,
+                    email: _currentUser?.email,
                     radius: 50,
-                    child: Icon(Icons.person, size: 50),
+                    fontSize: 36,
                   ),
                   Positioned(
                     bottom: 0,
@@ -136,8 +211,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Container(
                       padding: const EdgeInsets.all(4),
                       decoration: BoxDecoration(
-                        color: AppConstants.primaryColor,
+                        color: Colors.grey[600],
                         shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
                       ),
                       child: const Icon(
                         Icons.camera_alt,
@@ -148,13 +224,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 8),
+              Text(
+                _currentUser?.fullName ?? 'User',
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                _currentUser?.email ?? '',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey[600],
+                ),
+              ),
+              const SizedBox(height: 32),
+              
               // Profile Info
               TextFormField(
                 controller: _nameController,
                 decoration: const InputDecoration(
                   labelText: 'Full Name',
                   prefixIcon: Icon(Icons.person),
+                  border: OutlineInputBorder(),
                 ),
                 enabled: _isEditing,
                 validator: (value) {
@@ -170,8 +263,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 decoration: const InputDecoration(
                   labelText: 'Email',
                   prefixIcon: Icon(Icons.email),
+                  border: OutlineInputBorder(),
                 ),
-                enabled: _isEditing,
+                enabled: false, // Email should not be editable
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please enter your email';
@@ -188,11 +282,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 decoration: const InputDecoration(
                   labelText: 'Phone Number',
                   prefixIcon: Icon(Icons.phone),
+                  border: OutlineInputBorder(),
                 ),
                 enabled: _isEditing,
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please enter your phone number';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _addressController,
+                decoration: const InputDecoration(
+                  labelText: 'Address',
+                  prefixIcon: Icon(Icons.location_on),
+                  border: OutlineInputBorder(),
+                ),
+                enabled: _isEditing,
+                maxLines: 2,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter your address';
                   }
                   return null;
                 },

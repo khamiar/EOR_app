@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:eoreporter_v1/constants/app_constants.dart';
+import 'package:eoreporter_v1/services/auth_service.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -13,11 +14,14 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
   final _fullNameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _addressController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  final _authService = AuthService();
   bool _isPasswordVisible = false;
   bool _isConfirmPasswordVisible = false;
   bool _isLoading = false;
+  String? _errorMessage;
   AnimationController? _animationController;
   Animation<double>? _fadeAnimation;
   Animation<Offset>? _slideAnimation;
@@ -65,6 +69,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
     _fullNameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _addressController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _animationController?.dispose();
@@ -72,33 +77,65 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
   }
 
   Future<void> _register() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() {
-        _isLoading = true;
-      });
+    if (!_formKey.currentState!.validate()) return;
 
-      try {
-        // Simulate network delay
-        await Future.delayed(const Duration(seconds: 1));
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      await _authService.register(
+        _fullNameController.text.trim(),
+        _emailController.text.trim(),
+        _passwordController.text,
+        _phoneController.text.trim(),
+        _addressController.text.trim(),
+        'USER', // Automatically set role to 'USER'
+      );
+
+      if (mounted) {
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Registration successful! Please login.'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+
+        // Wait for the snackbar to be visible before navigating
+        await Future.delayed(const Duration(seconds: 2));
         
         if (mounted) {
-          Navigator.of(context).pushReplacementNamed('/home');
+          Navigator.pop(context); // Return to login screen
         }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error: ${e.toString()}'),
-              backgroundColor: Colors.red,
-            ),
-          );
+      }
+    } catch (e) {
+      setState(() {
+        // Clean up the error message
+        String errorMsg = e.toString();
+        if (errorMsg.contains('Exception:')) {
+          errorMsg = errorMsg.split('Exception:')[1].trim();
         }
-      } finally {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
+        _errorMessage = errorMsg;
+      });
+
+      // Show error in snackbar as well
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_errorMessage ?? 'Registration failed'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
       }
     }
   }
@@ -106,11 +143,9 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // appBar: const CustomAppBar(
-      //   title: 'Register',
-      //   showBackButton: true,
-      // ),
       body: Container(
+        height: MediaQuery.of(context).size.height,
+        width: MediaQuery.of(context).size.width,
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
@@ -119,6 +154,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
               AppConstants.primaryColor.withOpacity(0.8),
               Colors.white,
             ],
+            stops: const [0.0, 1.0], // Ensures smooth gradient distribution
           ),
         ),
         child: SafeArea(
@@ -132,12 +168,12 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          const SizedBox(height: 20),
+                          const SizedBox(height: 10),
                           // Logo and Title
                           Hero(
                             tag: 'logo',
                             child: Container(
-                              height: 120,
+                              height: 80,
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 shape: BoxShape.circle,
@@ -149,38 +185,38 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                                   ),
                                 ],
                               ),
-                              child: Center(
+                              child: const Center(
                                 child: Icon(
                                   Icons.electric_bolt,
-                                  size: 60,
+                                  size: 40,
                                   color: AppConstants.primaryColor,
                                 ),
                               ),
                             ),
                           ),
-                          const SizedBox(height: 7),
-                          Text(
+                          const SizedBox(height: 10),
+                          const Text(
                             'Create Account',
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              fontSize: 28,
+                              fontSize: 24,
                               fontWeight: FontWeight.bold,
                               color: AppConstants.primaryColor,
                             ),
                           ),
                           const SizedBox(height: 5),
                           Text(
-                            'Sign up to get started',
+                            'Fill in your details to get started',
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              fontSize: 18,
+                              fontSize: 14,
                               color: Colors.grey[600],
                             ),
                           ),
-                          const SizedBox(height: 30),
-                          // Register Form
+                          const SizedBox(height: 15),
+                          // Registration Form
                           Container(
-                            padding: const EdgeInsets.all(20),
+                            padding: const EdgeInsets.all(15),
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(20),
@@ -205,6 +241,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                                       border: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(15),
                                       ),
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
                                       enabledBorder: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(15),
                                         borderSide: BorderSide(
@@ -230,6 +267,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                                       border: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(15),
                                       ),
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
                                       enabledBorder: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(15),
                                         borderSide: BorderSide(
@@ -248,7 +286,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                                     },
                                   ),
                                   const SizedBox(height: 10),
-                                  // Phone Number Field
+                                  // Phone Field
                                   TextFormField(
                                     controller: _phoneController,
                                     keyboardType: TextInputType.phone,
@@ -258,6 +296,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                                       border: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(15),
                                       ),
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
                                       enabledBorder: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(15),
                                         borderSide: BorderSide(
@@ -269,22 +308,20 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                                       if (value == null || value.isEmpty) {
                                         return 'Please enter your phone number';
                                       }
-                                      if (value.length < 10) {
-                                        return 'Please enter a valid phone number';
-                                      }
                                       return null;
                                     },
                                   ),
                                   const SizedBox(height: 10),
                                   // Address Field
                                   TextFormField(
-                                    controller: _fullNameController,
+                                    controller: _addressController,
                                     decoration: InputDecoration(
                                       labelText: 'Address',
                                       prefixIcon: const Icon(Icons.location_on),
                                       border: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(15),
                                       ),
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
                                       enabledBorder: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(15),
                                         borderSide: BorderSide(
@@ -294,7 +331,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                                     ),
                                     validator: (value) {
                                       if (value == null || value.isEmpty) {
-                                        return 'Please enter your Address';
+                                        return 'Please enter your address';
                                       }
                                       return null;
                                     },
@@ -322,6 +359,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                                       border: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(15),
                                       ),
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
                                       enabledBorder: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(15),
                                         borderSide: BorderSide(
@@ -362,6 +400,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                                       border: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(15),
                                       ),
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
                                       enabledBorder: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(15),
                                         borderSide: BorderSide(
@@ -379,7 +418,17 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                                       return null;
                                     },
                                   ),
-                                  const SizedBox(height: 20),
+                                  if (_errorMessage != null) ...[
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      _errorMessage!,
+                                      style: const TextStyle(
+                                        color: Colors.red,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ],
+                                  const SizedBox(height: 15),
                                   // Register Button
                                   SizedBox(
                                     width: double.infinity,
@@ -387,7 +436,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                                       onPressed: _isLoading ? null : _register,
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: AppConstants.primaryColor,
-                                        padding: const EdgeInsets.symmetric(vertical: 16),
+                                        padding: const EdgeInsets.symmetric(vertical: 12),
                                         shape: RoundedRectangleBorder(
                                           borderRadius: BorderRadius.circular(15),
                                         ),
@@ -410,29 +459,41 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                                             ),
                                     ),
                                   ),
+                                  const SizedBox(height: 20),
+                                  // Login Link
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Flexible(
+                                          child: Text(
+                                            "Already have an account?",
+                                            style: TextStyle(
+                                              color: Colors.grey[600],
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                        ),
+                                        TextButton(
+                                          onPressed: () {
+                                            Navigator.pop(context); // Return to login screen
+                                            // Navigator.pushReplacementNamed(context, '/login');
+                                          },
+                                          child: const Text(
+                                            'Login',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
-                          ),
-                          const SizedBox(height: 10),
-                          // Login Link
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Text("Already have an account?"),
-                              TextButton(
-                                onPressed: () {
-                                  Navigator.of(context).pop();
-                                },
-                                child: Text(
-                                  'Login',
-                                  style: TextStyle(
-                                    color: AppConstants.primaryColor,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ],
                           ),
                         ],
                       ),

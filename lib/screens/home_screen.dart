@@ -82,13 +82,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _initializeDownloadDirectory() async {
     try {
-      if (Platform.isWindows) {
-        final appDir = await getApplicationDocumentsDirectory();
-        _downloadDirectory = Directory('${appDir.path}\\EO Reporter Downloads');
-      } else {
-        _downloadDirectory = Directory('${(await getApplicationDocumentsDirectory()).path}/EO Reporter Downloads');
-      }
+      final appDir = await getApplicationDocumentsDirectory();
 
+      final downloadPath = Platform.isWindows 
+          ? '${appDir.path}\\EO Reporter Downloads'
+          : '${appDir.path}/EO Reporter Downloads';
+
+      _downloadDirectory = Directory(downloadPath);
+      
       if (!await _downloadDirectory!.exists()) {
         await _downloadDirectory!.create(recursive: true);
       }
@@ -96,6 +97,14 @@ class _HomeScreenState extends State<HomeScreen> {
       await _checkExistingDownloads();
     } catch (e) {
       debugPrint('Error initializing download directory: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error initializing downloads: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -322,6 +331,13 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// This function is used to display attachment options based on the provided map of attachments.
+  /// 
+  /// Args:
+  ///   attachment (Map<String, dynamic>): The `_showAttachmentOptions` function takes a parameter
+  /// `attachment` of type `Map<String, dynamic>`. This means that `attachment` is a map where the keys
+  /// are of type `String` and the values can be of any type (`dynamic`). You can access the values in
+  /// the map using
   void _showAttachmentOptions(Map<String, dynamic> attachment) {
     final bool isDownloaded = _downloadedFiles.containsKey(attachment['url']);
     
@@ -427,7 +443,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: CircularProgressIndicator(
                     value: progress,
                     strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(AppConstants.primaryColor),
+                    valueColor: const AlwaysStoppedAnimation<Color>(AppConstants.primaryColor),
                   ),
                 )
               : Icon(
@@ -585,7 +601,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: AppConstants.primaryColor),
+                    borderSide: const BorderSide(color: AppConstants.primaryColor),
                   ),
                   filled: true,
                   fillColor: Colors.grey[50],
@@ -790,8 +806,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                   children: [
                                     Text(
                                       DateFormat('MMM d, y').format(announcement['date']),
-                                      style: TextStyle(
-                                        color: const Color.fromARGB(255, 179, 178, 178),
+                                      style: const TextStyle(
+                                        color: Color.fromARGB(255, 179, 178, 178),
                                         fontSize: 12,
                                       ),
                                     ),
@@ -829,87 +845,59 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    return Scaffold(
-      appBar: CustomAppBar(
-        title: getTitle(),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.more_vert),
-            onPressed: () => _showMoreOptions(context),
-          ),
-        ],
-      ),
-      body: _selectedIndex == 0 ? _buildHomeContent() : _screens[_selectedIndex - 1],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: (index) {
+    return WillPopScope(
+      onWillPop: () async {
+        if (_selectedIndex == 0) {
+          // If on home screen, exit the app directly
+          return true;
+        } else {
+          // If on other screens, navigate back to home
           setState(() {
-            _selectedIndex = index;
+            _selectedIndex = 0;
           });
-        },
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: AppConstants.primaryColor,
-        unselectedItemColor: Colors.grey,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.list_alt),
-            label: 'My Reports',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.feedback),
-            label: 'Feedback',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.notifications),
-            label: 'Notifications',
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.pushNamed(context, '/report');
-        },
-        backgroundColor: AppConstants.primaryColor,
-        child: const Icon(Icons.power_off,  color: Colors.red),
-      ),
-    );
-  }
-
-  void _showMoreOptions(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          return false;
+        }
+      },
+      child: Scaffold(
+        appBar: CustomAppBar(
+          title: getTitle(),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(top: 8, bottom: 16),
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
+        body: _selectedIndex == 0 ? _buildHomeContent() : _screens[_selectedIndex - 1],
+        bottomNavigationBar: BottomNavigationBar(
+          currentIndex: _selectedIndex,
+          onTap: (index) {
+            setState(() {
+              _selectedIndex = index;
+            });
+          },
+          type: BottomNavigationBarType.fixed,
+          selectedItemColor: AppConstants.primaryColor,
+          unselectedItemColor: Colors.grey,
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.home),
+              label: 'Home',
             ),
-            ListTile(
-              leading: const Icon(Icons.person),
-              title: const Text('Profile'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/profile');
-              },
+            BottomNavigationBarItem(
+              icon: Icon(Icons.list_alt),
+              label: 'My Reports',
             ),
-            const SizedBox(height: 16),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.feedback),
+              label: 'Feedback',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.notifications),
+              label: 'Notifications',
+            ),
           ],
+        ),
+        floatingActionButton: FloatingActionButton(
+          onPressed: () {
+            Navigator.pushNamed(context, '/report');
+          },
+          backgroundColor: AppConstants.primaryColor,
+          child: const Icon(Icons.power_off,  color: Colors.red),
         ),
       ),
     );

@@ -1,229 +1,234 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:eoreporter_v1/constants/app_constants.dart';
-import 'package:eoreporter_v1/utils/animations.dart';
-import 'package:eoreporter_v1/widgets/custom_app_bar.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:video_player/video_player.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:eoreporter_v1/services/api_service.dart';
+import 'package:eoreporter_v1/widgets/custom_button.dart';
+import 'package:eoreporter_v1/widgets/custom_text_field.dart';
+import 'package:eoreporter_v1/widgets/custom_app_bar.dart';
+import 'package:eoreporter_v1/constants/app_constants.dart';
 
 class ReportOutageScreen extends StatefulWidget {
   const ReportOutageScreen({super.key});
 
   @override
-  State<ReportOutageScreen> createState() => _ReportOutageScreenState();
+  /// The function `_ReportOutageScreenState createState()` returns an instance of
+  /// `_ReportOutageScreenState`.
+  _ReportOutageScreenState createState() => _ReportOutageScreenState();
 }
 
-class _ReportOutageScreenState extends State<ReportOutageScreen> with SingleTickerProviderStateMixin {
+class _ReportOutageScreenState extends State<ReportOutageScreen> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
-  final _manualLocationController = TextEditingController();
-  final _imagePicker = ImagePicker();
-  File? _selectedImage;
-  File? _selectedVideo;
+  final _locationController = TextEditingController();
+  final _apiService = ApiService();
+  
+  String? _imagePath;
+  String? _videoPath;
+  Position? _currentPosition;
+  bool _isLocationLoading = false;
   bool _isSubmitting = false;
-  late final AnimationController _submitController;
-  String? _selectedCategory;
-
-  final List<String> _categories = [
-    'Power Outage',
-    'Water Outage',
-    'Internet Outage',
-    'Gas Outage',
-    'Other'
-  ];
+  VideoPlayerController? _videoController;
 
   @override
   void initState() {
     super.initState();
-    _submitController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..addStatusListener((status) {
-      if (status == AnimationStatus.completed) {
+    // Remove automatic location loading on init
+  }
+
+  Future<String> _getLocationName(double latitude, double longitude) async {
+    try {
+      List<Placemark> placemarks = await placemarkFromCoordinates(latitude, longitude);
+      if (placemarks.isNotEmpty) {
+        Placemark place = placemarks.first;
+        String locationName = [
+          place.locality,
+          place.subLocality,
+          place.thoroughfare,
+        ].where((part) => part != null && part.isNotEmpty).join(', ');
+        
+        return locationName.isNotEmpty ? locationName : 'Unknown Location';
+      }
+      return 'Unknown Location';
+    } catch (e) {
+      print('Error getting location name: $e');
+      return 'Unknown Location';
+    }
+  }
+
+  Future<void> _getCurrentLocation() async {
+    setState(() => _isLocationLoading = true);
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
         if (mounted) {
-          setState(() => _isSubmitting = false);
-          _submitController.reset();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please enable location services'),
+              duration: Duration(seconds: 5),
+            ),
+          );
+        }
+        setState(() => _isLocationLoading = false);
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Location permission denied'),
+                duration: Duration(seconds: 5),
+              ),
+            );
+          }
+          setState(() => _isLocationLoading = false);
+          return;
         }
       }
-    });
-  }
 
-  @override
-  void dispose() {
-    _titleController.dispose();
-    _descriptionController.dispose();
-    _manualLocationController.dispose();
-    _submitController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _pickImage(ImageSource source) async {
-    try {
-      final status = await Permission.camera.request();
-      if (!status.isGranted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Camera permission is required to take photos'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-
-      final pickedFile = await _imagePicker.pickImage(source: source);
-      if (pickedFile != null) {
-        setState(() {
-          _selectedImage = File(pickedFile.path);
-          _selectedVideo = null; // Clear video if image is selected
-        });
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error picking image: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  Future<void> _pickVideo(ImageSource source) async {
-    try {
-      final status = await Permission.camera.request();
-      if (!status.isGranted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Camera permission is required to record videos'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-
-      final pickedFile = await _imagePicker.pickVideo(source: source);
-      if (pickedFile != null) {
-        setState(() {
-          _selectedVideo = File(pickedFile.path);
-          _selectedImage = null; // Clear image if video is selected
-        });
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error picking video: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  void _showMediaOptions() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 40,
-            height: 4,
-            margin: const EdgeInsets.symmetric(vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.grey[300],
-              borderRadius: BorderRadius.circular(2),
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Location permissions are permanently denied. Please enable them in settings.'),
+              duration: Duration(seconds: 5),
             ),
+          );
+        }
+        setState(() => _isLocationLoading = false);
+        return;
+      }
+
+      Position position = await Geolocator.getCurrentPosition();
+      String locationName = await _getLocationName(position.latitude, position.longitude);
+      
+      if (mounted) {
+        setState(() {
+          _currentPosition = position;
+          _locationController.text = locationName;
+          _isLocationLoading = false;
+        });
+      }
+    } catch (e) {
+      print('Error getting location: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error getting location: $e'),
+            duration: const Duration(seconds: 5),
           ),
-          ListTile(
-            leading: const Icon(Icons.camera_alt),
-            title: const Text('Take Photo'),
-            onTap: () {
-              Navigator.pop(context);
-              _pickImage(ImageSource.camera);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.photo_library),
-            title: const Text('Choose from Gallery'),
-            onTap: () {
-              Navigator.pop(context);
-              _pickImage(ImageSource.gallery);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.videocam),
-            title: const Text('Record Video'),
-            onTap: () {
-              Navigator.pop(context);
-              _pickVideo(ImageSource.camera);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.video_library),
-            title: const Text('Choose Video from Gallery'),
-            onTap: () {
-              Navigator.pop(context);
-              _pickVideo(ImageSource.gallery);
-            },
-          ),
-        ],
-      ),
-    );
+        );
+        setState(() => _isLocationLoading = false);
+      }
+    }
+  }
+
+  Future<void> _pickImage({ImageSource source = ImageSource.camera}) async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(source: source);
+      
+      if (image != null) {
+        setState(() {
+          _imagePath = image.path;
+        });
+      }
+    } catch (e) {
+      print('Error picking image: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error picking image: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _pickVideo({ImageSource source = ImageSource.camera}) async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? video = await picker.pickVideo(source: source);
+      
+      if (video != null) {
+        _videoController?.dispose();
+        final controller = VideoPlayerController.file(File(video.path));
+        await controller.initialize();
+        
+        setState(() {
+          _videoPath = video.path;
+          _videoController = controller;
+        });
+      }
+    } catch (e) {
+      print('Error picking video: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error picking video: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _submitReport() async {
-    if (_formKey.currentState!.validate()) {
-      if (!mounted) return;
-      
-      setState(() => _isSubmitting = true);
-      
-      try {
-        // Animate the submit button
-        await _submitController.forward();
+    if (!_formKey.currentState!.validate()) return;
+    
+    // Allow manual location input if GPS is not available
+    if (_currentPosition == null && _locationController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a location or enable location services'),
+          duration: Duration(seconds: 5),
+        ),
+      );
+      return;
+    }
 
-        // Show success message
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  const Icon(Icons.check_circle, color: Colors.white),
-                  const SizedBox(width: 8),
-                  const Text('Report submitted successfully'),
-                ],
-              ),
-              backgroundColor: Colors.green,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-          );
-        }
+    setState(() => _isSubmitting = true);
 
-        // Reset form
-        _formKey.currentState!.reset();
-        if (mounted) {
-          setState(() {
-            _selectedImage = null;
-            _selectedVideo = null;
-          });
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error submitting report: ${e.toString()}'),
-              backgroundColor: Colors.red,
+    try {
+      await _apiService.submitOutageReport(
+        title: _titleController.text,
+        description: _descriptionController.text,
+        location: _locationController.text,
+        latitude: _currentPosition?.latitude ?? 0.0,
+        longitude: _currentPosition?.longitude ?? 0.0,
+        imagePath: _imagePath,
+        videoPath: _videoPath,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Report submitted successfully'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error submitting report: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'Retry',
+              onPressed: () => _submitReport(),
             ),
-          );
-        }
-      } finally {
-        if (mounted) {
-          setState(() => _isSubmitting = false);
-        }
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
       }
     }
   }
@@ -231,234 +236,255 @@ class _ReportOutageScreenState extends State<ReportOutageScreen> with SingleTick
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const CustomAppBar(title: 'Report Outage'),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppConstants.defaultPadding),
-        child: FadeSlideTransition(
+      appBar: const CustomAppBar(
+        title: 'Report Outage',
+        showBackButton: true,
+      ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              AppConstants.primaryColor.withValues(alpha: 0.1),
+              Colors.white,
+            ],
+          ),
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
           child: Form(
             key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Title Field
-                FadeSlideTransition(
-                  duration: const Duration(milliseconds: 600),
-                  child: TextFormField(
-                    controller: _titleController,
-                    decoration: FormStyles.inputDecoration(
-                      label: 'Title',
-                      hint: 'Enter outage title',
-                      prefixIcon: Icons.title,
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter a title';
-                      }
-                      if (value.length < 5) {
-                        return 'Title should be at least 5 characters';
-                      }
-                      return null;
-                    },
+                // Header Section
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: AppConstants.primaryColor,
+                    borderRadius: BorderRadius.circular(15),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 10,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 20),
-                // Manual Location Field (Optional)
-                FadeSlideTransition(
-                  duration: const Duration(milliseconds: 650),
-                  child: TextFormField(
-                    controller: _manualLocationController,
-                    decoration: FormStyles.inputDecoration(
-                      label: 'Manual Location (Optional)',
-                      hint: 'Enter location if automatic detection fails',
-                      prefixIcon: Icons.location_on,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                // Category Field
-                FadeSlideTransition(
-                  duration: const Duration(milliseconds: 600),
-                  child: DropdownButtonFormField<String>(
-                    value: _selectedCategory,
-                    decoration: FormStyles.inputDecoration(
-                      label: 'Category',
-                      hint: 'Select outage category',
-                      prefixIcon: Icons.category,
-                    ),
-                    items: _categories.map((String category) {
-                      return DropdownMenuItem<String>(
-                        value: category,
-                        child: Text(category),
-                      );
-                    }).toList(),
-                    onChanged: (String? newValue) {
-                      setState(() {
-                        _selectedCategory = newValue;
-                      });
-                    },
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please select a category';
-                      }
-                      return null;
-                    },
-                  ),
-                ),
-                const SizedBox(height: 20),
-                // Description Field
-                FadeSlideTransition(
-                  duration: const Duration(milliseconds: 700),
-                  child: TextFormField(
-                    controller: _descriptionController,
-                    maxLines: 5,
-                    decoration: FormStyles.inputDecoration(
-                      label: 'Description',
-                      hint: 'Describe the outage in detail',
-                      prefixIcon: Icons.description,
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter a description';
-                      }
-                      if (value.length < 10) {
-                        return 'Description should be at least 10 characters';
-                      }
-                      return null;
-                    },
-                  ),
-                ),
-                const SizedBox(height: 20),
-                // Media Section
-                FadeSlideTransition(
-                  duration: const Duration(milliseconds: 800),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      const Icon(
+                        Icons.warning_amber_rounded,
+                        size: 50,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Report Power Outage',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
                       Text(
-                        'Add Media (Optional)',
-                        style: Theme.of(context).textTheme.titleMedium,
+                        'Help us restore power faster by providing accurate information',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.white.withOpacity(0.9),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Title Field
+                _buildTransparentSection(
+                  title: 'Outage Details',
+                  icon: Icons.description,
+                  child: CustomTextField(
+                    controller: _titleController,
+                    label: 'Title of Outage',
+                    hint: 'Enter a descriptive title for the outage',
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please enter a title for the outage';
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Description Field
+                _buildTransparentSection(
+                  title: 'Description',
+                  icon: Icons.notes,
+                  child: CustomTextField(
+                    controller: _descriptionController,
+                    label: 'Description of Outage',
+                    hint: 'Describe the outage in detail (what happened, when, etc.)',
+                    maxLines: 4,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please describe the outage';
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Location Field
+                _buildTransparentSection(
+                  title: 'Location',
+                  icon: Icons.location_on,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      CustomTextField(
+                        controller: _locationController,
+                        label: 'Location of Outage',
+                        hint: 'Enter the location name (e.g., Stone Town, Forodhani)',
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter the location name';
+                          }
+                          return null;
+                        },
                       ),
                       const SizedBox(height: 8),
+                      CustomButton(
+                        onPressed: _isLocationLoading ? null : _getCurrentLocation,
+                        text: _isLocationLoading ? 'Loading...' : 'Get Current Location',
+                        icon: _isLocationLoading ? null : Icons.my_location,
+                        backgroundColor: Colors.blue,
+                        isLoading: _isLocationLoading,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Media Section
+                _buildTransparentSection(
+                  title: 'Add Media',
+                  icon: Icons.photo_camera,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Image Preview
+                      if (_imagePath != null) ...[
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Stack(
+                            children: [
+                              Image.file(
+                                File(_imagePath!),
+                                height: 200,
+                                width: double.infinity,
+                                fit: BoxFit.cover,
+                              ),
+                              Positioned(
+                                top: 8,
+                                right: 8,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.5),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: IconButton(
+                                    icon: const Icon(Icons.close, color: Colors.white),
+                                    onPressed: () => setState(() => _imagePath = null),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+
+                      // Video Preview
+                      if (_videoController != null) ...[
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Stack(
+                            children: [
+                              AspectRatio(
+                                aspectRatio: _videoController!.value.aspectRatio,
+                                child: VideoPlayer(_videoController!),
+                              ),
+                              Positioned(
+                                top: 8,
+                                right: 8,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.5),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: IconButton(
+                                    icon: const Icon(Icons.close, color: Colors.white),
+                                    onPressed: () {
+                                      setState(() {
+                                        _videoController?.dispose();
+                                        _videoController = null;
+                                        _videoPath = null;
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+
+                      // Media Buttons
                       Row(
                         children: [
                           Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: _showMediaOptions,
-                              icon: const Icon(Icons.add_a_photo),
-                              label: const Text('Add Media'),
-                              style: ElevatedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 12),
+                            child: CustomButton(
+                              onPressed: () => _showMediaPicker(
+                                context: context,
+                                isImage: true,
                               ),
+                              text: _imagePath == null ? 'Add Photo' : 'Change Photo',
+                              icon: Icons.camera_alt,
+                              backgroundColor: Colors.green,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: CustomButton(
+                              onPressed: () => _showMediaPicker(
+                                context: context,
+                                isImage: false,
+                              ),
+                              text: _videoPath == null ? 'Add Video' : 'Change Video',
+                              icon: Icons.videocam,
+                              backgroundColor: Colors.orange,
                             ),
                           ),
                         ],
                       ),
-                      if (_selectedImage != null || _selectedVideo != null) ...[
-                        const SizedBox(height: 16),
-                        Container(
-                          height: 200,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.grey[300]!),
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: _selectedImage != null
-                                ? Image.file(
-                                    _selectedImage!,
-                                    fit: BoxFit.cover,
-                                    width: double.infinity,
-                                  )
-                                : _selectedVideo != null
-                                    ? Stack(
-                                        fit: StackFit.expand,
-                                        children: [
-                                          const Icon(
-                                            Icons.videocam,
-                                            size: 48,
-                                            color: Colors.grey,
-                                          ),
-                                          Positioned(
-                                            bottom: 8,
-                                            right: 8,
-                                            child: IconButton(
-                                              icon: const Icon(Icons.delete),
-                                              onPressed: () {
-                                                setState(() {
-                                                  _selectedVideo = null;
-                                                });
-                                              },
-                                            ),
-                                          ),
-                                        ],
-                                      )
-                                    : null,
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 24),
+
                 // Submit Button
-                FadeSlideTransition(
-                  duration: const Duration(milliseconds: 900),
-                  child: AnimatedBuilder(
-                    animation: _submitController,
-                    builder: (context, child) {
-                      final buttonWidth = _isSubmitting
-                          ? 50.0
-                          : MediaQuery.of(context).size.width;
-                      
-                      return Center(
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 300),
-                          width: buttonWidth,
-                          height: 50,
-                          child: ElevatedButton(
-                            onPressed: _isSubmitting ? null : _submitReport,
-                            style: FormStyles.elevatedButtonStyle().copyWith(
-                              backgroundColor: WidgetStateProperty.all(
-                                _isSubmitting
-                                    ? Colors.green
-                                    : AppConstants.primaryColor,
-                              ),
-                              shape: WidgetStateProperty.all(
-                                RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(
-                                    _isSubmitting ? 25 : 12,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            child: _isSubmitting
-                                ? const SizedBox(
-                                    width: 24,
-                                    height: 24,
-                                    child: CircularProgressIndicator(
-                                      color: Colors.white,
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.send),
-                                      SizedBox(width: 8),
-                                      Text(
-                                        'Submit Report',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+                CustomButton(
+                  onPressed: _isSubmitting ? null : _submitReport,
+                  text: 'Submit Report',
+                  icon: Icons.send,
+                  backgroundColor: AppConstants.primaryColor,
+                  isLoading: _isSubmitting,
                 ),
               ],
             ),
@@ -466,5 +492,92 @@ class _ReportOutageScreenState extends State<ReportOutageScreen> with SingleTick
         ),
       ),
     );
+  }
+
+  Widget _buildTransparentSection({
+    required String title,
+    required IconData icon,
+    required Widget child,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, color: AppConstants.primaryColor),
+            const SizedBox(width: 8),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: AppConstants.primaryColor,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        child,
+      ],
+    );
+  }
+
+  void _showMediaPicker({
+    required BuildContext context,
+    required bool isImage,
+  }) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(
+                isImage ? Icons.camera_alt : Icons.videocam,
+                color: AppConstants.primaryColor,
+              ),
+              title: Text(isImage ? 'Take Photo' : 'Record Video'),
+              onTap: () {
+                Navigator.pop(context);
+                if (isImage) {
+                  _pickImage(source: ImageSource.camera);
+                } else {
+                  _pickVideo(source: ImageSource.camera);
+                }
+              },
+            ),
+            ListTile(
+              leading: Icon(
+                isImage ? Icons.photo_library : Icons.video_library,
+                color: AppConstants.primaryColor,
+              ),
+              title: Text(isImage ? 'Choose from Gallery' : 'Choose from Gallery'),
+              onTap: () {
+                Navigator.pop(context);
+                if (isImage) {
+                  _pickImage(source: ImageSource.gallery);
+                } else {
+                  _pickVideo(source: ImageSource.gallery);
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    _locationController.dispose();
+    _videoController?.dispose();
+    super.dispose();
   }
 } 
