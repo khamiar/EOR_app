@@ -167,13 +167,14 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                       position: _slideAnimation!,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
+                      
                         children: [
                           const SizedBox(height: 10),
                           // Logo and Title
                           Hero(
                             tag: 'logo',
                             child: Container(
-                              height: 80,
+                              height: 100,
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 shape: BoxShape.circle,
@@ -188,7 +189,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                               child: const Center(
                                 child: Icon(
                                   Icons.electric_bolt,
-                                  size: 40,
+                                  size: 50,
                                   color: AppConstants.primaryColor,
                                 ),
                               ),
@@ -199,18 +200,18 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                             'Create Account',
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              fontSize: 24,
+                              fontSize: 28,
                               fontWeight: FontWeight.bold,
                               color: AppConstants.primaryColor,
                             ),
                           ),
                           const SizedBox(height: 5),
-                          Text(
+                          const Text(
                             'Fill in your details to get started',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 14,
-                              color: Colors.grey[600],
+                              color: Color.fromARGB(255, 53, 53, 53),
                             ),
                           ),
                           const SizedBox(height: 15),
@@ -453,6 +454,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                                           : const Text(
                                               'Register',
                                               style: TextStyle(
+                                                color: Color.fromARGB(255, 255, 255, 255),
                                                 fontSize: 16,
                                                 fontWeight: FontWeight.bold,
                                               ),
@@ -466,11 +468,11 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                                     child: Row(
                                       mainAxisAlignment: MainAxisAlignment.center,
                                       children: [
-                                        Flexible(
+                                        const Flexible(
                                           child: Text(
                                             "Already have an account?",
                                             style: TextStyle(
-                                              color: Colors.grey[600],
+                                              color: Color.fromARGB(255, 66, 66, 66),
                                               fontSize: 14,
                                             ),
                                           ),
@@ -483,6 +485,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                                           child: const Text(
                                             'Login',
                                             style: TextStyle(
+                                              color: Color.fromARGB(255, 106, 8, 8),
                                               fontSize: 14,
                                               fontWeight: FontWeight.bold,
                                             ),

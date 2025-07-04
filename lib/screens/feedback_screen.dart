@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:eoreporter_v1/constants/app_constants.dart';
 import 'package:eoreporter_v1/utils/animations.dart';
+import 'package:eoreporter_v1/services/api_service.dart';
 
 class FeedbackScreen extends StatefulWidget {
   const FeedbackScreen({super.key});
@@ -13,6 +14,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> with SingleTickerProvid
   final _formKey = GlobalKey<FormState>();
   final _subjectController = TextEditingController();
   final _messageController = TextEditingController();
+  final _apiService = ApiService();
   late AnimationController _submitController;
   bool _isSubmitting = false;
 
@@ -44,18 +46,33 @@ class _FeedbackScreenState extends State<FeedbackScreen> with SingleTickerProvid
     if (_formKey.currentState!.validate()) {
       setState(() => _isSubmitting = true);
       
+      try {
+        // Submit feedback to backend
+        final response = await _apiService.submitFeedback(
+          subject: _subjectController.text.trim(),
+          message: _messageController.text.trim(),
+        );
+      
       // Animate the submit button
       await _submitController.forward();
 
+        if (mounted) {
+          // Extract message safely from response
+          String successMessage = 'Feedback submitted successfully';
+          if (response is Map<String, dynamic> && response.containsKey('message')) {
+            successMessage = response['message']?.toString() ?? successMessage;
+          }
+
       // Show success message
-      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Row(
+              content: Row(
               children: [
-                Icon(Icons.check_circle, color: Colors.white),
-                SizedBox(width: 8),
-                Text('Feedback submitted successfully'),
+                  const Icon(Icons.check_circle, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(successMessage),
+                  ),
               ],
             ),
             backgroundColor: Colors.green,
@@ -63,12 +80,55 @@ class _FeedbackScreenState extends State<FeedbackScreen> with SingleTickerProvid
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),
+              duration: const Duration(seconds: 4),
           ),
         );
-      }
 
       // Reset form
+          _subjectController.clear();
+          _messageController.clear();
       _formKey.currentState!.reset();
+        }
+      } catch (e) {
+        if (mounted) {
+          // Show error message
+          String errorMessage = e.toString();
+          if (errorMessage.startsWith('Exception: ')) {
+            errorMessage = errorMessage.substring('Exception: '.length);
+          }
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.error_outline, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(errorMessage),
+                  ),
+                ],
+              ),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              duration: const Duration(seconds: 5),
+              action: SnackBarAction(
+                label: 'Dismiss',
+                textColor: Colors.white,
+                onPressed: () {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                },
+              ),
+            ),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isSubmitting = false);
+        }
+      }
     }
   }
 
@@ -278,16 +338,21 @@ class _FeedbackScreenState extends State<FeedbackScreen> with SingleTickerProvid
                                       strokeWidth: 2,
                                     ),
                                   )
-                                : const Row(
+                                : Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
+                                    mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(Icons.send),
-                                      SizedBox(width: 8),
-                                      Text(
+                                      const Icon(Icons.send),
+                                      const SizedBox(width: 8),
+                                      Flexible(
+                                        child: Text(
                                         'Submit Feedback',
-                                        style: TextStyle(
+                                          style: const TextStyle(
                                           fontSize: 16,
                                           fontWeight: FontWeight.bold,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: 1,
                                         ),
                                       ),
                                     ],

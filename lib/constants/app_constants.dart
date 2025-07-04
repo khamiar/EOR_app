@@ -19,6 +19,7 @@ class AppConstants {
   static const String profileEndpoint = '/auth/profile';
   static const String outagesEndpoint = '/outages';
   static const String notificationsEndpoint = '/notifications';
+  static const String feedbackEndpoint = '/feedback';
   
   // Error Messages
   static const String networkError = 'Network error. Please check your internet connection.';
@@ -27,9 +28,8 @@ class AppConstants {
   static const String unknownError = 'An unknown error occurred. Please try again.';
   
   // Colors Themes
-  static const Color primaryColor = Color(0xFF2196F3);
-  static const Color secondaryColor = Color(0xFF03A9F4);
-  static const Color accentColor = Color(0xFF00BCD4);
+  static const Color primaryColor = Color.fromRGBO(116, 32, 11, 1);
+  static const Color accentColor = Color.fromRGBO(113, 44, 33, 1);
   static const Color backgroundColor = Color(0xFFF5F5F5);
   static const Color textColor = Color(0xFF212121);
   static const Color errorColor = Color(0xFFD32F2F);
