@@ -11,8 +11,33 @@ import 'package:eoreporter_v1/screens/my_reports_screen.dart';
 import 'package:eoreporter_v1/screens/feedback_screen.dart';
 import 'package:eoreporter_v1/screens/notifications_screen.dart';
 import 'package:eoreporter_v1/screens/profile_screen.dart';
+import 'package:eoreporter_v1/screens/forgot_password_screen.dart';
+import 'services/notification_polling.dart';
+import 'services/local_notification_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  final prefs = await SharedPreferences.getInstance();
+  final userId = prefs.getInt('user_id');
+
+  if (userId != null) {
+    NotificationPoller().startPolling(userId: userId);
+  }
+
+  // Initialize local notification service first
+  try {
+    await LocalNotificationService().initialize();
+
+    bool permissionsGranted =
+        await LocalNotificationService().requestPermissions();
+    debugPrint('Notification permissions granted: $permissionsGranted');
+
+  } catch (e) {
+    debugPrint('ERROR INITIALIZING NOTIFICATIONS: $e');
+  }
+  
   runApp(
     MultiProvider(
       providers: [
@@ -74,6 +99,7 @@ class MyApp extends StatelessWidget {
         '/feedback': (context) => const FeedbackScreen(),
         '/notifications': (context) => const NotificationsScreen(),
         '/profile': (context) => const ProfileScreen(),
+        '/forgot-password': (context) => const ForgotPasswordScreen(),
       },
       // Handle unknown routes
       // onGenerateRoute: (settings) {

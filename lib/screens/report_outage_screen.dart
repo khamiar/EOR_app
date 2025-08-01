@@ -5,17 +5,13 @@ import 'package:video_player/video_player.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:eoreporter_v1/services/api_service.dart';
-import 'package:eoreporter_v1/widgets/custom_button.dart';
-import 'package:eoreporter_v1/widgets/custom_text_field.dart';
-import 'package:eoreporter_v1/widgets/custom_app_bar.dart';
 import 'package:eoreporter_v1/constants/app_constants.dart';
+import 'package:eoreporter_v1/widgets/custom_app_bar.dart';
 
 class ReportOutageScreen extends StatefulWidget {
   const ReportOutageScreen({super.key});
 
   @override
-  /// The function `_ReportOutageScreenState createState()` returns an instance of
-  /// `_ReportOutageScreenState`.
   _ReportOutageScreenState createState() => _ReportOutageScreenState();
 }
 
@@ -25,7 +21,7 @@ class _ReportOutageScreenState extends State<ReportOutageScreen> {
   final _descriptionController = TextEditingController();
   final _locationController = TextEditingController();
   final _apiService = ApiService();
-  
+
   String? _imagePath;
   String? _videoPath;
   Position? _currentPosition;
@@ -33,10 +29,57 @@ class _ReportOutageScreenState extends State<ReportOutageScreen> {
   bool _isSubmitting = false;
   VideoPlayerController? _videoController;
 
+  // Define your categories
+  final List<String> _categories = [
+    'Emergency',
+    'Planned Maintenance',
+    'Partial Outage',
+    'Total Outage',
+    'Other',
+  ];
+
+  String? _selectedCategory;
+
   @override
   void initState() {
     super.initState();
-    // Remove automatic location loading on init
+    _autoFillLocation();
+  }
+
+  Future<void> _autoFillLocation() async {
+    setState(() => _isLocationLoading = true);
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() => _isLocationLoading = false);
+        return;
+      }
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          setState(() => _isLocationLoading = false);
+          return;
+        }
+      }
+      if (permission == LocationPermission.deniedForever) {
+        setState(() => _isLocationLoading = false);
+        return;
+      }
+      Position position = await Geolocator.getCurrentPosition();
+      String locationName = await _getLocationName(position.latitude, position.longitude);
+      if (mounted) {
+        setState(() {
+          _currentPosition = position;
+          _locationController.text = locationName;
+          _isLocationLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLocationLoading = false);
+      }
+    }
   }
 
   Future<String> _getLocationName(double latitude, double longitude) async {
@@ -240,344 +283,216 @@ class _ReportOutageScreenState extends State<ReportOutageScreen> {
         title: 'Report Outage',
         showBackButton: true,
       ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              AppConstants.primaryColor.withValues(alpha: 0.1),
-              Colors.white,
-            ],
-          ),
-        ),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Header Section
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: AppConstants.primaryColor,
-                    borderRadius: BorderRadius.circular(15),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 10,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
+      backgroundColor: Colors.white,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Title
+              const Text(
+                'Report Power Outage',
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                  color: AppConstants.primaryColor,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Help us restore power faster by providing accurate information.',
+                style: TextStyle(fontSize: 15, color: Colors.grey[700]),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 32),
+
+              // Category Field
+              DropdownButtonFormField<String>(
+                value: _selectedCategory,
+                decoration: InputDecoration(
+                  labelText: 'Category of Outage',
+                  prefixIcon: const Icon(Icons.category),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                items: _categories.map((category) {
+                  return DropdownMenuItem<String>(
+                    value: category,
+                    child: Text(category),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _selectedCategory = value;
+                    _titleController.text = value ?? '';
+                  });
+                },
+                validator: (value) => value == null || value.isEmpty ? 'Please select a category' : null,
+              ),
+              const SizedBox(height: 20),
+
+              // Description Field
+              TextFormField(
+                controller: _descriptionController,
+                decoration: InputDecoration(
+                  labelText: 'Description',
+                  prefixIcon: const Icon(Icons.notes),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                maxLines: 4,
+                validator: (value) => value == null || value.isEmpty ? 'Please describe the outage' : null,
+              ),
+              const SizedBox(height: 20),
+
+              // Location Field
+              TextFormField(
+                controller: _locationController,
+                decoration: InputDecoration(
+                  labelText: 'Location',
+                  prefixIcon: const Icon(Icons.location_on),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                validator: (value) => value == null || value.isEmpty ? 'Please enter the location' : null,
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _isLocationLoading ? null : _getCurrentLocation,
+                  icon: _isLocationLoading
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.my_location, color: AppConstants.primaryColor),
+                  label: Text(
+                    _isLocationLoading ? 'Loading...' : 'Get Current Location',
+                    style: const TextStyle(color: AppConstants.primaryColor),
                   ),
-                  child: Column(
-                    children: [
-                      const Icon(
-                        Icons.warning_amber_rounded,
-                        size: 50,
-                        color: Colors.white,
-                      ),
-                      const SizedBox(height: 10),
-                      const Text(
-                        'Report Power Outage',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 5),
-                      Text(
-                        'Help us restore power faster by providing accurate information',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.white.withOpacity(0.9),
-                        ),
-                      ),
-                    ],
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: AppConstants.primaryColor),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
-                const SizedBox(height: 20),
+              ),
+              const SizedBox(height: 20),
 
-                // Title Field
-                _buildTransparentSection(
-                  title: 'Outage Details',
-                  icon: Icons.description,
-                  child: CustomTextField(
-                    controller: _titleController,
-                    label: 'Title of Outage',
-                    hint: 'Enter a descriptive title for the outage',
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter a title for the outage';
-                      }
-                      return null;
-                    },
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Description Field
-                _buildTransparentSection(
-                  title: 'Description',
-                  icon: Icons.notes,
-                  child: CustomTextField(
-                    controller: _descriptionController,
-                    label: 'Description of Outage',
-                    hint: 'Describe the outage in detail (what happened, when, etc.)',
-                    maxLines: 4,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please describe the outage';
-                      }
-                      return null;
-                    },
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Location Field
-                _buildTransparentSection(
-                  title: 'Location',
-                  icon: Icons.location_on,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      CustomTextField(
-                        controller: _locationController,
-                        label: 'Location of Outage',
-                        hint: 'Enter the location name (e.g., Stone Town, Forodhani)',
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter the location name';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 8),
-                      CustomButton(
-                        onPressed: _isLocationLoading ? null : _getCurrentLocation,
-                        text: _isLocationLoading ? 'Loading...' : 'Get Current Location',
-                        icon: _isLocationLoading ? null : Icons.my_location,
-                        backgroundColor: Colors.blue,
-                        isLoading: _isLocationLoading,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Media Section
-                _buildTransparentSection(
-                  title: 'Add Media',
-                  icon: Icons.photo_camera,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Image Preview
-                      if (_imagePath != null) ...[
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Stack(
-                            children: [
-                              Image.file(
-                                File(_imagePath!),
-                                height: 200,
-                                width: double.infinity,
-                                fit: BoxFit.cover,
-                              ),
-                              Positioned(
-                                top: 8,
-                                right: 8,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(0.5),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: IconButton(
-                                    icon: const Icon(Icons.close, color: Colors.white),
-                                    onPressed: () => setState(() => _imagePath = null),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                      ],
-
-                      // Video Preview
-                      if (_videoController != null) ...[
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Stack(
-                            children: [
-                              AspectRatio(
-                                aspectRatio: _videoController!.value.aspectRatio,
-                                child: VideoPlayer(_videoController!),
-                              ),
-                              Positioned(
-                                top: 8,
-                                right: 8,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(0.5),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: IconButton(
-                                    icon: const Icon(Icons.close, color: Colors.white),
-                                    onPressed: () {
-                                      setState(() {
-                                        _videoController?.dispose();
-                                        _videoController = null;
-                                        _videoPath = null;
-                                      });
-                                    },
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                      ],
-
-                      // Media Buttons
-                      Row(
+              // Media Section
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                child: _imagePath != null
+                    ? Stack(
                         children: [
-                          Expanded(
-                            child: CustomButton(
-                              onPressed: () => _showMediaPicker(
-                                context: context,
-                                isImage: true,
-                              ),
-                              text: _imagePath == null ? 'Add Photo' : 'Change Photo',
-                              icon: Icons.camera_alt,
-                              backgroundColor: Colors.green,
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.file(
+                              File(_imagePath!),
+                              height: 180,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: CustomButton(
-                              onPressed: () => _showMediaPicker(
-                                context: context,
-                                isImage: false,
-                              ),
-                              text: _videoPath == null ? 'Add Video' : 'Change Video',
-                              icon: Icons.videocam,
-                              backgroundColor: Colors.orange,
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: IconButton(
+                              icon: const Icon(Icons.close, color: Colors.red),
+                              onPressed: () => setState(() => _imagePath = null),
                             ),
                           ),
                         ],
+                      )
+                    : const SizedBox.shrink(),
+              ),
+              if (_imagePath != null) const SizedBox(height: 12),
+
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                child: _videoController != null
+                    ? Stack(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: AspectRatio(
+                              aspectRatio: _videoController!.value.aspectRatio,
+                              child: VideoPlayer(_videoController!),
+                            ),
+                          ),
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: IconButton(
+                              icon: const Icon(Icons.close, color: Colors.red),
+                              onPressed: () {
+                                setState(() {
+                                  _videoController?.dispose();
+                                  _videoController = null;
+                                  _videoPath = null;
+                                });
+                              },
+                            ),
+                          ),
+                        ],
+                      )
+                    : const SizedBox.shrink(),
+              ),
+              if (_videoController != null) const SizedBox(height: 12),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _pickImage(source: ImageSource.camera),
+                      icon: const Icon(Icons.camera_alt, color: AppConstants.primaryColor),
+                      label: const Text('Add Photo', style: TextStyle(color: AppConstants.primaryColor)),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: AppConstants.primaryColor),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                    ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _pickVideo(source: ImageSource.camera),
+                      icon: const Icon(Icons.videocam, color: AppConstants.primaryColor),
+                      label: const Text('Add Video', style: TextStyle(color: AppConstants.primaryColor)),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: AppConstants.primaryColor),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 32),
+
+              // Submit Button
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: _isSubmitting ? null : _submitReport,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppConstants.primaryColor,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    child: _isSubmitting
+                        ? const SizedBox(
+                            key: ValueKey('loading'),
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Text('Submit Report', key: ValueKey('text')),
                   ),
                 ),
-                const SizedBox(height: 24),
-
-                // Submit Button
-                CustomButton(
-                  onPressed: _isSubmitting ? null : _submitReport,
-                  text: 'Submit Report',
-                  icon: Icons.send,
-                  backgroundColor: AppConstants.primaryColor,
-                  isLoading: _isSubmitting,
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
-
-  Widget _buildTransparentSection({
-    required String title,
-    required IconData icon,
-    required Widget child,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(icon, color: AppConstants.primaryColor),
-            const SizedBox(width: 8),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppConstants.primaryColor,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        child,
-      ],
-    );
-  }
-
-  void _showMediaPicker({
-    required BuildContext context,
-    required bool isImage,
-  }) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: Icon(
-                isImage ? Icons.camera_alt : Icons.videocam,
-                color: AppConstants.primaryColor,
-              ),
-              title: Text(isImage ? 'Take Photo' : 'Record Video'),
-              onTap: () {
-                Navigator.pop(context);
-                if (isImage) {
-                  _pickImage(source: ImageSource.camera);
-                } else {
-                  _pickVideo(source: ImageSource.camera);
-                }
-              },
-            ),
-            ListTile(
-              leading: Icon(
-                isImage ? Icons.photo_library : Icons.video_library,
-                color: AppConstants.primaryColor,
-              ),
-              title: Text(isImage ? 'Choose from Gallery' : 'Choose from Gallery'),
-              onTap: () {
-                Navigator.pop(context);
-                if (isImage) {
-                  _pickImage(source: ImageSource.gallery);
-                } else {
-                  _pickVideo(source: ImageSource.gallery);
-                }
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    _titleController.dispose();
-    _descriptionController.dispose();
-    _locationController.dispose();
-    _videoController?.dispose();
-    super.dispose();
-  }
-} 
+}

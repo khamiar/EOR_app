@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../services/api_service.dart';
+import 'package:intl/intl.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -7,333 +9,283 @@ class NotificationsScreen extends StatefulWidget {
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
-class _NotificationsScreenState extends State<NotificationsScreen> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _scaleAnimation;
-  late Animation<Offset> _slideAnimation;
+class _NotificationsScreenState extends State<NotificationsScreen> {
+  final ApiService apiService = ApiService();
   List<Map<String, dynamic>> _notifications = [];
+  bool _isLoading = true;
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 500),
-    );
-
-    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
-    );
-
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.1),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
-
-    _controller.forward();
-    _loadNotifications();
+    _fetchNotifications();
   }
 
-  void _handleNotificationTap(Map<String, dynamic> notification) {
+  Future<void> _fetchNotifications() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final notifications = await apiService.getNotifications();
+      setState(() {
+        _notifications = List<Map<String, dynamic>>.from(notifications);
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Failed to load notifications: ${e.toString()}';
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _handleNotificationTap(dynamic notification) {
     final type = notification['type'] as String?;
-    final data = notification['data'] as Map<String, dynamic>?;
+    final data = notification['data'] is Map ? notification['data'] as Map<String, dynamic> : null;
+    final notificationId = notification['id']?.toString();
+    
+    if (notificationId != null && !(notification['read'] ?? false)) {
+      _markNotificationAsRead(notificationId);
+    }
 
     if (type == null || data == null) return;
 
     switch (type) {
-      case 'outage_report':
-        Navigator.pushNamed(
-          context,
-          '/report',
-          arguments: {
-            'reportId': data['reportId'],
-            'title': data['title'],
-          },
-        );
-        break;
       case 'announcement':
-        Navigator.pushReplacementNamed(
-          context,
-          '/home',
-          arguments: {
-            'announcementId': data['announcementId'],
-            'scrollToAnnouncement': true,
-          },
-        );
+        Navigator.pushNamed(context, '/announcementDetails', arguments: data);
         break;
-      case 'feedback_response':
-        showModalBottomSheet(
-          context: context,
-          isScrollControlled: true,
-          backgroundColor: Colors.transparent,
-          builder: (context) => Container(
-            height: MediaQuery.of(context).size.height * 0.7,
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.feedback,
-                        color: Colors.green,
-                        size: 24,
-                      ),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Text(
-                          'Feedback Response',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Your feedback has been reviewed and addressed.',
-                          style: TextStyle(fontSize: 16),
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'Response:',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Thank you for your feedback. We have reviewed your concerns and are working on implementing the suggested improvements. Your input is valuable in helping us provide better service.',
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+      default:
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unknown notification type')),
         );
-        break;
-      case 'profile_update':
-        Navigator.pushNamed(
-          context,
-          '/profile',
-          arguments: {
-            'updateType': data['updateType'],
-          },
-        );
-        break;
     }
 
-    _markNotificationAsRead(notification['id']);
+
   }
 
-  void _markNotificationAsRead(String notificationId) {
-    setState(() {
-      final index = _notifications.indexWhere((n) => n['id'] == notificationId);
-      if (index != -1) {
-        _notifications[index]['isRead'] = true;
+  Future<void> _markNotificationAsRead(String notificationId) async {
+    try {
+      await ApiService().markNotificationAsRead(notificationId);
+      setState(() {
+        final index = _notifications.indexWhere((n) => n['id']?.toString() == notificationId);
+        if (index != -1) {
+          _notifications[index]['read'] = true;
+        }
+      });
+    } catch (e) {
+      // Show error message if marking as read fails
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to mark notification as read')),
+        );
       }
-    });
+    }
   }
 
-  void _loadNotifications() {
-    setState(() {
-      _notifications = [
-        {
-          'id': '1',
-          'title': 'New Outage Report',
-          'message': 'Your outage report has been received and is being processed.',
-          'timestamp': DateTime.now().subtract(const Duration(minutes: 5)),
-          'type': 'outage_report',
-          'data': {
-            'reportId': '123',
-            'title': 'Power Outage in Downtown',
-          },
-          'isRead': false,
-        },
-        {
-          'id': '2',
-          'title': 'Announcement',
-          'message': 'Scheduled maintenance in your area tomorrow.',
-          'timestamp': DateTime.now().subtract(const Duration(hours: 2)),
-          'type': 'announcement',
-          'data': {
-            'announcementId': '456',
-          },
-          'isRead': false,
-        },
-        {
-          'id': '3',
-          'title': 'Feedback Response',
-          'message': 'Your feedback has been reviewed and addressed.',
-          'timestamp': DateTime.now().subtract(const Duration(days: 1)),
-          'type': 'feedback_response',
-          'data': {
-            'feedbackId': '789',
-          },
-          'isRead': true,
-        },
-      ];
-    });
+  String _formatDateTime(DateTime? dateTime) {
+    if (dateTime == null) return '';
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.inDays > 7) {
+      return DateFormat('MMM d, y').format(dateTime);
+    } else if (difference.inDays > 1) {
+      return '${difference.inDays} days ago';
+    } else if (difference.inDays == 1) {
+      return 'Yesterday';
+    } else if (difference.inHours > 1) {
+      return '${difference.inHours} hours ago';
+    } else if (difference.inMinutes > 1) {
+      return '${difference.inMinutes} minutes ago';
+    } else {
+      return 'Just now';
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // appBar: const CustomAppBar(title: 'Notifications'),
-      body: _notifications.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.notifications_off,
-                    size: 64,
-                    color: Colors.grey[400],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No notifications',
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ],
-              ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _notifications.length,
-              itemBuilder: (context, index) {
-                final notification = _notifications[index];
-                final color = _getNotificationColor(notification['type']);
-                final icon = _getNotificationIcon(notification['type']);
-                
-                return SlideTransition(
-                  position: _slideAnimation,
-                  child: FadeTransition(
-                    opacity: _controller,
-                    child: ScaleTransition(
-                      scale: _scaleAnimation,
-                      child: Card(
-                        margin: const EdgeInsets.only(bottom: 16),
-                        elevation: 2,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: InkWell(
-                          onTap: () => _handleNotificationTap(notification),
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              border: Border(
-                                left: BorderSide(
-                                  color: color,
-                                  width: 4,
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _errorMessage != null
+              ? Center(child: Text(_errorMessage!))
+              : _notifications.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.notifications_off,
+                            size: 64,
+                            color: Colors.grey[400],
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'No notifications',
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _fetchNotifications, // <-- fix here
+                      child: ListView.builder(
+                        padding: EdgeInsets.zero, // Remove horizontal padding
+                        itemCount: _notifications.length,
+                        itemBuilder: (context, index) {
+                          final notification = _notifications[index];
+                          final isRead = notification['read'] ?? false;
+                          final timestamp = notification['createdAt'] != null
+                              ? DateTime.tryParse(notification['createdAt'])
+                              : null;
+
+                          return Dismissible(
+                            key: Key(notification['id'].toString()),
+                            direction: DismissDirection.horizontal,
+                            background: Container(
+                              color: Colors.red,
+                              alignment: Alignment.centerLeft,
+                              padding: const EdgeInsets.only(left: 24),
+                              child: const Icon(Icons.delete, color: Colors.white),
+                            ),
+                            secondaryBackground: Container(
+                              color: Colors.red,
+                              alignment: Alignment.centerRight,
+                              padding: const EdgeInsets.only(right: 24),
+                              child: const Icon(Icons.delete, color: Colors.white),
+                            ),
+                            onDismissed: (direction) async {
+                              final id = notification['id'];
+                              final success = await apiService.deleteNotification(id);
+                              if (success) {
+                                setState(() {
+                                  _notifications.removeAt(index);
+                                });
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Notification deleted')),
+                                );
+                              } else {
+                                setState(() {});
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Failed to delete notification')),
+                                );
+                              }
+                            },
+                            child: Card(
+                              margin: EdgeInsets.zero,
+                              elevation: 0,
+                              color: Colors.transparent,
+                              shape: const RoundedRectangleBorder(
+                                borderRadius: BorderRadius.zero,
+                              ),
+                              child: InkWell(
+                                onTap: () => _handleNotificationTap(notification),
+                                borderRadius: BorderRadius.zero,
+                                child: Container(
+                                  width: double.infinity, // Ensure full width
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        Colors.white,
+                                        Colors.grey[100]!,
+                                      ],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    ),
+                                    border: Border(
+                                      left: BorderSide(
+                                        color: _getNotificationColor(notification['type'] ?? ''),
+                                        width: 4,
+                                      ),
+                                    ),
+                                    borderRadius: BorderRadius.zero,
+                                    boxShadow: [],
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 8), // No horizontal padding
+                                    child: Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.all(8),
+                                          decoration: BoxDecoration(
+                                            color: _getNotificationColor(notification['type'] ?? '')
+                                                .withOpacity(0.1),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Icon(
+                                            _getNotificationIcon(notification['type'] ?? ''),
+                                            color: _getNotificationColor(notification['type'] ?? ''),
+                                            size: 20,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                notification['title']?.toString() ?? 'Notification',
+                                                style: TextStyle(
+                                                  fontWeight:
+                                                      isRead ? FontWeight.normal : FontWeight.bold,
+                                                  fontSize: 16,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                notification['body']?.toString() ??
+                                                    notification['message']?.toString() ??
+                                                    'No content',
+                                                style: TextStyle(
+                                                  color: Colors.grey[600],
+                                                  fontSize: 14,
+                                                ),
+                                              ),
+                                              if (timestamp != null) ...[
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  _formatDateTime(timestamp),
+                                                  style: TextStyle(
+                                                    color: Colors.grey[500],
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                        ),
+                                        if (!isRead)
+                                          Container(
+                                            width: 10,
+                                            height: 10,
+                                            decoration: const BoxDecoration(
+                                              color: Colors.blue,
+                                              shape: BoxShape.circle,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.all(8),
-                                        decoration: BoxDecoration(
-                                          color: color.withOpacity(0.1),
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: Icon(
-                                          icon,
-                                          color: color,
-                                          size: 20,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Text(
-                                          notification['title'],
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                      if (!notification['isRead'])
-                                        Container(
-                                          width: 8,
-                                          height: 8,
-                                          decoration: BoxDecoration(
-                                            color: color,
-                                            shape: BoxShape.circle,
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    notification['message'],
-                                    style: TextStyle(
-                                      color: Colors.grey[600],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    _formatTimestamp(notification['timestamp']),
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey[500],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
+                          );
+                        },
                       ),
                     ),
-                  ),
-                );
-              },
-            ),
     );
   }
 
   Color _getNotificationColor(String type) {
     switch (type) {
       case 'outage_report':
-        return Colors.yellow;
+        return Colors.orange;
       case 'announcement':
         return Colors.blue;
       case 'feedback_response':
@@ -341,7 +293,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
       case 'profile_update':
         return Colors.purple;
       default:
-        return Colors.grey;
+        return Colors.yellow;
     }
   }
 
@@ -360,6 +312,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
     }
   }
 
+  // ignore: unused_element
   String _formatTimestamp(DateTime timestamp) {
     final now = DateTime.now();
     final difference = now.difference(timestamp);
@@ -377,7 +330,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
 
   @override
   void dispose() {
-    _controller.dispose();
     super.dispose();
   }
-} 
+}

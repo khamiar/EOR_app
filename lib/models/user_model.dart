@@ -2,16 +2,18 @@ class User {
   final String id;
   final String fullName;
   final String email;
-  final String phoneNumber;
-  final String address;
+  final String? phoneNumber;
+  final String? address;
+  final String? profileImageUrl;
   String password;
 
   User({
     required this.id,
     required this.fullName,
     required this.email,
-    required this.phoneNumber,
-    required this.address,
+    this.phoneNumber,
+    this.address,
+    this.profileImageUrl,
     required this.password,
   });
 
@@ -23,6 +25,7 @@ class User {
       email: json['email'],
       phoneNumber: json['phoneNumber'],
       address: json['address'],
+      profileImageUrl: json['profileImageUrl'],
       password: json['password'],
     );
   }
@@ -35,6 +38,7 @@ class User {
       'email': email,
       'phoneNumber': phoneNumber,
       'address': address,
+      'profileImageUrl': profileImageUrl,
       'password': password,
     };
   }

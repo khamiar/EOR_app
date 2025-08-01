@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 
 class AppConstants {
   // API Configuration
-  static const String apiBaseUrl = 'http://192.168.1.7:8080/api';
+  static const String apiBaseUrl = 'http://10.65.2.62:8080/api';
+  // static const String apiBaseUrl = 'http://localhost:8080/api';
   
   // App Configuration
   static const String appName = 'EOReporter';
@@ -27,12 +28,12 @@ class AppConstants {
   static const String authError = 'Authentication failed. Please login again.';
   static const String unknownError = 'An unknown error occurred. Please try again.';
   
-  // Colors Themes
-  static const Color primaryColor = Color.fromRGBO(116, 32, 11, 1);
-  static const Color accentColor = Color.fromRGBO(113, 44, 33, 1);
-  static const Color backgroundColor = Color(0xFFF5F5F5);
-  static const Color textColor = Color(0xFF212121);
-  static const Color errorColor = Color(0xFFD32F2F);
+// Colors Themes
+static const Color primaryColor = Color.fromRGBO(116, 32, 11, 1);    // Burnt Sienna / Rust Red
+static const Color accentColor = Color.fromRGBO(113, 44, 33, 1);     // Redwood / Dark Coral
+static const Color backgroundColor = Color(0xFFF5F5F5);               // White Smoke (light gray)
+static const Color textColor = Color(0xFF212121);                     // Almost Black (dark gray)
+static const Color errorColor = Color(0xFFD32F2F);                    // Persian Red
   
   // Text Styles
   static const TextStyle headingStyle = TextStyle(

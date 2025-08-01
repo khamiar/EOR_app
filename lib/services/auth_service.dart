@@ -51,13 +51,6 @@ class AuthService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         
-        // print('=== LOGIN DEBUG INFO ===');
-        // print('Full response data: $data');
-        // print('Token: ${data['token']}');
-        // print('Role from response: ${data['role']}');
-        // print('User object: ${data['user']}');
-        // print('========================');
-        
         // Create user data with the available information
         // Backend returns role as enum (USER, ADMIN), convert to string
         String? userRole = data['role']?.toString() ?? 'USER';
@@ -72,17 +65,7 @@ class AuthService {
           'id': data['id']?.toString(),
         };
         
-        // print('=== USER DATA DEBUG ===');
-        // print('Created userData: $userData');
-        // print('=======================');
-        
         final user = User.fromJson(userData);
-        
-        // print('=== USER OBJECT DEBUG ===');
-        // print('User role: ${user.role}');
-        // print('User role uppercase: ${user.role?.toUpperCase()}');
-        // print('Role check result: ${user.role != null && user.role!.toUpperCase() != 'USER'}');
-        // print('========================');
         
         // Check if user role is allowed for mobile app
         if (user.role != null && user.role!.toUpperCase() != 'USER') {
@@ -188,7 +171,8 @@ class AuthService {
       // Ensure role is always "USER"
       final userRole = role.toUpperCase() == "USER" ? "USER" : "USER";
       
-      print('Attempting to register with data: ${jsonEncode({
+      //debug
+      print('Attempting to register with data: ${jsonEncode({ 
         'fullName': fullName,
         'email': email,
         'phoneNumber': phoneNumber,
@@ -197,6 +181,7 @@ class AuthService {
         'role': userRole,
       })}');
 
+      //send request to ENDPOIN as JSON
       final response = await http.post(
         Uri.parse('${AppConstants.apiBaseUrl}/auth/register'),
         headers: {'Content-Type': 'application/json'},
@@ -321,5 +306,44 @@ class AuthService {
 
   Future<void> clearLoginHistory() async {
     await _userHistoryService.clearLoginHistory();
+  }
+
+  static Future<String?> requestPasswordReset(String email) async {
+    final response = await http.post(
+       Uri.parse('${AppConstants.apiBaseUrl}/auth/request-reset'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email}),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body)['message'];
+    } else {
+      return jsonDecode(response.body)['message'] ?? 'Failed to send OTP';
+    }
+  }
+
+  static Future<String?> verifyOtp(String email, String otp) async {
+    final response = await http.post(
+      Uri.parse('${AppConstants.apiBaseUrl}/auth/verify-otp'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email, 'otp': otp}),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body)['message'];
+    } else {
+      return jsonDecode(response.body)['message'] ?? 'Invalid OTP';
+    }
+  }
+
+  static Future<String?> resetPassword(String email, String otp, String newPassword) async {
+    final response = await http.post(
+      Uri.parse('${AppConstants.apiBaseUrl}/auth/reset-password'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email, 'otp': otp, 'newPassword': newPassword}),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body)['message'];
+    } else {
+      return jsonDecode(response.body)['message'] ?? 'Failed to reset password';
+    }
   }
 }

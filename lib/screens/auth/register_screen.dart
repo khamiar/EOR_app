@@ -10,13 +10,16 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProviderStateMixin {
-  final _formKey = GlobalKey<FormState>();
+
+  final _formKey = GlobalKey<FormState>(); //ensures field pass validation before reg
+  //capture and valid
   final _fullNameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _addressController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+
   final _authService = AuthService();
   bool _isPasswordVisible = false;
   bool _isConfirmPasswordVisible = false;
@@ -64,6 +67,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
     }
   }
 
+//after close state clear data and animation
   @override
   void dispose() {
     _fullNameController.dispose();
@@ -77,7 +81,8 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
   }
 
   Future<void> _register() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) return; //validation
+
 
     setState(() {
       _isLoading = true;
@@ -85,6 +90,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
     });
 
     try {
+      //send data to backend use _AuthServices
       await _authService.register(
         _fullNameController.text.trim(),
         _emailController.text.trim(),
@@ -250,7 +256,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                                         ),
                                       ),
                                     ),
-                                    validator: (value) {
+                                    validator: (value) {                                                    //validation
                                       if (value == null || value.isEmpty) {
                                         return 'Please enter your full name';
                                       }
@@ -276,7 +282,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                                         ),
                                       ),
                                     ),
-                                    validator: (value) {
+                                    validator: (value) {                                          //validation
                                       if (value == null || value.isEmpty) {
                                         return 'Please enter your email';
                                       }
@@ -305,7 +311,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                                         ),
                                       ),
                                     ),
-                                    validator: (value) {
+                                    validator: (value) {                                        //validation
                                       if (value == null || value.isEmpty) {
                                         return 'Please enter your phone number';
                                       }
@@ -330,7 +336,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                                         ),
                                       ),
                                     ),
-                                    validator: (value) {
+                                    validator: (value) {                                  //validation
                                       if (value == null || value.isEmpty) {
                                         return 'Please enter your address';
                                       }

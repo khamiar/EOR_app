@@ -3,7 +3,8 @@ import 'package:eoreporter_v1/constants/app_constants.dart';
 import 'package:eoreporter_v1/widgets/custom_app_bar.dart';
 import 'package:eoreporter_v1/services/auth_service.dart';
 import 'package:eoreporter_v1/models/user.dart';
-import 'package:eoreporter_v1/widgets/user_avatar.dart';
+import 'dart:io';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -27,19 +28,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isEditing = false;
   bool _isChangingPassword = false;
   bool _isLoading = true;
+  File? _pickedImage;
+  String? _localProfileImageUrl;
 
   @override
   void initState() {
     super.initState();
     _loadUserData();
+    _loadLocalProfileImageUrl();
   }
 
   Future<void> _loadUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final localUrl = prefs.getString('profileImageUrl');
+
     try {
       final user = await _authService.getCurrentUser();
       if (mounted) {
         setState(() {
-          _currentUser = user;
+          _currentUser = user?.copyWith(profileImageUrl: localUrl ?? user.profileImageUrl);
           _nameController.text = user?.fullName ?? '';
           _emailController.text = user?.email ?? '';
           _phoneController.text = user?.phoneNumber ?? '';
@@ -60,6 +67,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
       }
     }
+  }
+
+  Future<void> _loadLocalProfileImageUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _localProfileImageUrl = prefs.getString('profileImageUrl');
+    });
+  }
+
+  Future<void> _saveLocalProfileImageUrl(String url) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('profileImageUrl', url);
+    setState(() {
+      _localProfileImageUrl = url;
+    });
+  }
+
+  Future<void> _clearLocalProfileImageUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('profileImageUrl');
+    setState(() {
+      _localProfileImageUrl = null;
+    });
   }
 
   String _getInitials(String? fullName, String? email) {
@@ -157,8 +187,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _logout() async {
     await _authService.logout();
+    // await _clearLocalProfileImageUrl(); // This line is removed as per the edit hint
     if (mounted) {
-    Navigator.of(context).pushReplacementNamed('/login');
+      Navigator.of(context).pushReplacementNamed('/login');
     }
   }
 
@@ -199,28 +230,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // Profile Picture with Initials
               Stack(
                 children: [
-                  UserAvatar(
-                    fullName: _currentUser?.fullName,
-                    email: _currentUser?.email,
+                  CircleAvatar(
                     radius: 50,
-                    fontSize: 36,
-                  ),
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[600],
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
-                      ),
-                      child: const Icon(
-                        Icons.camera_alt,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                    ),
+                    backgroundColor: AppConstants.primaryColor,
+                    backgroundImage: _localProfileImageUrl != null && _localProfileImageUrl!.isNotEmpty
+                        ? NetworkImage(_localProfileImageUrl!)
+                        : null,
+                    child: (_localProfileImageUrl == null || _localProfileImageUrl!.isEmpty)
+                        ? Text(
+                            _getInitials(_currentUser?.fullName, _currentUser?.email),
+                            style: const TextStyle(fontSize: 36, color: Colors.white),
+                          )
+                        : null,
                   ),
                 ],
               ),

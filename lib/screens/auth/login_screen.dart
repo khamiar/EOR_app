@@ -10,9 +10,11 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
-  final _formKey = GlobalKey<FormState>();
+  final _formKey = GlobalKey<FormState>();   //ensures field pass validation before reg
+  //capture and valid
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+
   final _authService = AuthService();
   bool _isPasswordVisible = false;
   bool _isLoading = false;
@@ -82,6 +84,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
   Future<void> _login() async {
     if (_formKey.currentState!.validate()) {
+      
       setState(() {
         _isLoading = true;
       });
@@ -308,7 +311,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                     alignment: Alignment.centerRight,
                                     child: TextButton(
                                       onPressed: () {
-                                        // TODO: Implement forgot password
+                                        Navigator.of(context).pushNamed('/forgot-password');
                                       },
                                       child: const Text(
                                         'Forgot Password?',

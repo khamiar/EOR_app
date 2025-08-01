@@ -4,6 +4,22 @@ import 'package:eoreporter_v1/constants/app_constants.dart';
 import 'package:http_parser/http_parser.dart';
 import 'dart:convert';
 
+class NotificationModel {
+  final int id;
+  final String title;
+  final String body;
+  bool read;
+
+  NotificationModel({required this.id, required this.title, required this.body, required this.read});
+
+  factory NotificationModel.fromJson(Map<String, dynamic> json) => NotificationModel(
+    id: json['id'],
+    title: json['title'],
+    body: json['body'],
+    read: json['read'],
+  );
+}
+
 class ApiService {
   final Dio _dio = Dio();
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
@@ -30,7 +46,7 @@ class ApiService {
       onRequest: (options, handler) async {
         // Don't add token to login/register requests
         final isAuthEndpoint = options.path.contains('/auth/authenticate') || 
-                               options.path.contains('/auth/register');
+                            options.path.contains('/auth/register');
         
         if (!isAuthEndpoint) {
           final token = await _storage.read(key: AppConstants.tokenKey);
@@ -121,7 +137,6 @@ class ApiService {
     try {
       await _dio.post(AppConstants.logoutEndpoint);
     } catch (e) {
-      // Continue with local logout even if server logout fails
       print('Server logout failed, continuing with local logout: $e');
     } finally {
       // Always clear local tokens
@@ -164,18 +179,18 @@ class ApiService {
     try {
       // Create the report data with proper types
       final reportData = {
-        'title': title,
+        'title': title, // <-- This will now be the selected category
         'description': description,
         'manualLocation': location,
-        'latitude': latitude.toString(), // Convert to string for JSON
-        'longitude': longitude.toString(), // Convert to string for JSON
-        'status': 'PENDING', // Add default status
-        'reportedAt': DateTime.now().toIso8601String(), // Add report date
+        'latitude': latitude.toString(), 
+        'longitude': longitude.toString(), 
+        'status': 'PENDING', 
+        'reportedAt': DateTime.now().toIso8601String(), 
       };
 
       // Create form data
       FormData formData = FormData.fromMap({
-        'report': jsonEncode(reportData), // Encode report data as JSON string
+        'report': jsonEncode(reportData), 
       });
 
       // Add media file if available
@@ -210,22 +225,18 @@ class ApiService {
     }
   }
 
-  Future<List<dynamic>> getMyReports() async {
-    if (await _isOfflineMode()) {
-      _throwOfflineError('Reports data');
-    }
-    
-    try {
-      final response = await _dio.get('${AppConstants.outagesEndpoint}/my');
-      return response.data;
-    } on DioException catch (e) {
-      if (e.type == DioExceptionType.connectionTimeout || 
-          e.type == DioExceptionType.receiveTimeout) {
-        throw Exception(AppConstants.networkError);
-      }
-      throw Exception('Failed to get reports: ${e.response?.data['message'] ?? e.message}');
-    } catch (e) {
-      throw Exception('Failed to get reports: ${e.toString()}');
+  Future<List<Map<String, dynamic>>> fetchMyReports(String token) async {
+    final response = await _dio.get(
+      '${AppConstants.outagesEndpoint}/my',
+      options: Options(
+        headers: {'Authorization': 'Bearer $token'},
+      ),
+    );
+    if (response.statusCode == 200) {
+      final List data = response.data;
+      return data.cast<Map<String, dynamic>>();
+    } else {
+      throw Exception('Failed to load reports');
     }
   }
 
@@ -304,7 +315,6 @@ class ApiService {
         if (response.data is Map<String, dynamic>) {
           return response.data;
         } else {
-          // If response.data is not the expected type, create a safe response
           return {
             'message': 'Feedback submitted successfully',
             'id': null,
@@ -401,4 +411,25 @@ class ApiService {
       throw Exception('Failed to get feedback details: ${e.toString()}');
     }
   }
-} 
+
+  static Future<int> fetchUnreadCount() async {
+    final response = await Dio().get('${AppConstants.apiBaseUrl}${AppConstants.notificationsEndpoint}/unread-count');
+    if (response.statusCode == 200) {
+      // If the backend returns just the count as a number
+      return int.parse(response.data.toString());
+      // If the backend returns a JSON object like {"count": 5}, use:
+      // return response.data['count'];
+    }
+    return 0;
+  }
+
+  Future<bool> deleteNotification(int id) async {
+    try {
+      final response = await _dio.delete('/notifications/$id');
+      return response.statusCode == 200;
+    } catch (e) {
+      // Optionally log error
+      return false;
+    }
+  }
+}

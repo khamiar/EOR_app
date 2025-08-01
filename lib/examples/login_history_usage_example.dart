@@ -12,6 +12,8 @@ import '../services/auth_service.dart';
 
 // Example 1: Using LoginHistoryWidget in your login screen
 class LoginScreenExample extends StatefulWidget {
+  const LoginScreenExample({super.key});
+
   @override
   _LoginScreenExampleState createState() => _LoginScreenExampleState();
 }
@@ -80,7 +82,7 @@ class _LoginScreenExampleState extends State<LoginScreenExample> {
             TextFormField(
               controller: _passwordController,
               obscureText: true,
-              decoration: InputDecoration(labelText: 'Password'),
+              decoration: const InputDecoration(labelText: 'Password'),
             ),
             
             // Login button
@@ -93,7 +95,7 @@ class _LoginScreenExampleState extends State<LoginScreenExample> {
                   _passwordController.text
                 );
               },
-              child: Text('Login'),
+              child: const Text('Login'),
             ),
           ],
         ),
@@ -104,6 +106,8 @@ class _LoginScreenExampleState extends State<LoginScreenExample> {
 
 // Example 2: Using email autocomplete with frequent emails
 class EmailAutocompleteExample extends StatefulWidget {
+  const EmailAutocompleteExample({super.key});
+
   @override
   _EmailAutocompleteExampleState createState() => _EmailAutocompleteExampleState();
 }
@@ -144,7 +148,7 @@ class _EmailAutocompleteExampleState extends State<EmailAutocompleteExample> {
         return TextFormField(
           controller: controller,
           focusNode: focusNode,
-          decoration: InputDecoration(
+          decoration: const InputDecoration(
             labelText: 'Email',
             prefixIcon: Icon(Icons.email),
           ),
@@ -156,6 +160,8 @@ class _EmailAutocompleteExampleState extends State<EmailAutocompleteExample> {
 
 // Example 3: Managing login history (for settings screen)
 class LoginHistoryManagementExample extends StatefulWidget {
+  const LoginHistoryManagementExample({super.key});
+
   @override
   _LoginHistoryManagementExampleState createState() => _LoginHistoryManagementExampleState();
 }
@@ -167,7 +173,7 @@ class _LoginHistoryManagementExampleState extends State<LoginHistoryManagementEx
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Login History')),
+      appBar: AppBar(title: const Text('Login History')),
       body: Column(
         children: [
           // Show full login history with remove buttons
@@ -190,11 +196,11 @@ class _LoginHistoryManagementExampleState extends State<LoginHistoryManagementEx
                 await _authService.clearLoginHistory();
                 setState(() {}); // Refresh the widget
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Login history cleared')),
+                  const SnackBar(content: Text('Login history cleared')),
                 );
               },
-              child: Text('Clear All History'),
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('Clear All History'),
             ),
           ),
         ],

@@ -59,7 +59,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> with SingleTickerProvid
         if (mounted) {
           // Extract message safely from response
           String successMessage = 'Feedback submitted successfully';
-          if (response is Map<String, dynamic> && response.containsKey('message')) {
+          if (response.containsKey('message')) {
             successMessage = response['message']?.toString() ?? successMessage;
           }
 
@@ -338,16 +338,16 @@ class _FeedbackScreenState extends State<FeedbackScreen> with SingleTickerProvid
                                       strokeWidth: 2,
                                     ),
                                   )
-                                : Row(
+                                : const Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      const Icon(Icons.send),
-                                      const SizedBox(width: 8),
+                                      Icon(Icons.send),
+                                      SizedBox(width: 8),
                                       Flexible(
                                         child: Text(
                                         'Submit Feedback',
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                           fontSize: 16,
                                           fontWeight: FontWeight.bold,
                                           ),

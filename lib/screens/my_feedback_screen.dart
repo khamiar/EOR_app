@@ -230,11 +230,11 @@ class _MyFeedbackScreenState extends State<MyFeedbackScreen> {
                 const SizedBox(height: 16),
                 const Divider(),
                 const SizedBox(height: 8),
-                Row(
+                const Row(
                   children: [
                     Icon(Icons.admin_panel_settings, size: 16, color: Colors.blue),
-                    const SizedBox(width: 4),
-                    const Text(
+                    SizedBox(width: 4),
+                    Text(
                       'Admin Response:',
                       style: TextStyle(fontWeight: FontWeight.w500, color: Colors.blue),
                     ),
