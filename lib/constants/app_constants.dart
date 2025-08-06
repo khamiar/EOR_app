@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 class AppConstants {
   // API Configuration
-  static const String apiBaseUrl = 'http://10.65.2.62:8080/api';
+  static const String apiBaseUrl = 'http://10.8.2.226:8080/api';
   // static const String apiBaseUrl = 'http://localhost:8080/api';
   
   // App Configuration
@@ -21,6 +21,7 @@ class AppConstants {
   static const String outagesEndpoint = '/outages';
   static const String notificationsEndpoint = '/notifications';
   static const String feedbackEndpoint = '/feedback';
+  static const String announcementsEndpoint = '/announcements';
   
   // Error Messages
   static const String networkError = 'Network error. Please check your internet connection.';

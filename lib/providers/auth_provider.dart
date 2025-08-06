@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:eoreporter_v1/services/api_service.dart';
+import 'package:eoreporter_v1/services/auth_service.dart';
+import 'package:eoreporter_v1/services/auth_checker_service.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class AuthProvider with ChangeNotifier {
   final ApiService _apiService = ApiService();
+  final AuthService _authService = AuthService();
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
 
   bool _isAuthenticated = false;
@@ -19,65 +22,124 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> _checkAuthStatus() async {
-    final token = await _storage.read(key: 'jwt_token');
-    if (token != null) {
-      try {
+    try {
+      print('AUTH: Checking authentication status...');
+      // Use AuthCheckerService for consistent authentication checking
+      final isAuth = await AuthCheckerService.isAuthenticated();
+      final token = await AuthCheckerService.getToken();
+      
+      print('AUTH: isAuth: $isAuth, token: ${token != null ? 'exists' : 'null'}');
+      
+      if (isAuth && token != null) {
         _authToken = token;
-        _user = await _apiService.getProfile();
-        _isAuthenticated = true;
-        notifyListeners();
-      } catch (e) {
-        await _storage.delete(key: 'jwt_token');
-        _authToken = null;
+        
+        // Try to get user profile
+        try {
+          print('AUTH: Getting user profile...');
+          final user = await _authService.getCurrentUser();
+          if (user != null) {
+            _user = user.toJson();
+            _isAuthenticated = true;
+            print('AUTH: User authenticated successfully: ${user.email}');
+          } else {
+            print('AUTH: No user data found');
+            _isAuthenticated = false;
+            _authToken = null;
+            _user = null;
+            await AuthCheckerService.clearAuthData();
+          }
+        } catch (e) {
+          print('AUTH: Failed to get profile, treating as unauthenticated: $e');
+          _isAuthenticated = false;
+          _authToken = null;
+          _user = null;
+          await AuthCheckerService.clearAuthData();
+        }
+      } else {
+        print('AUTH: No valid authentication found');
         _isAuthenticated = false;
+        _authToken = null;
         _user = null;
-        notifyListeners();
       }
+      
+      notifyListeners();
+    } catch (e) {
+      print('AUTH: Error checking auth status: $e');
+      _isAuthenticated = false;
+      _authToken = null;
+      _user = null;
+      notifyListeners();
     }
+  }
+
+  /// Refresh authentication status manually
+  Future<void> refreshAuthStatus() async {
+    await _checkAuthStatus();
   }
 
   Future<void> login(String email, String password) async {
     try {
-      final response = await _apiService.login(email, password);
-      _user = response['user'];
-      _authToken = response['token'];
-      _isAuthenticated = true;
-
-      await _storage.write(key: 'jwt_token', value: _authToken);
+      print('AUTH_PROVIDER: Logging in...');
+      final user = await _authService.login(email, password);
+      if (user != null) {
+        _user = user.toJson();
+        _authToken = user.token;
+        _isAuthenticated = true;
+        print('AUTH_PROVIDER: Login successful: ${user.email}');
+      } else {
+        print('AUTH_PROVIDER: Login failed - no user returned');
+        throw Exception('Login failed - no user data received');
+      }
 
       notifyListeners();
     } catch (e) {
+      print('AUTH_PROVIDER: Login error: $e');
       rethrow;
     }
   }
 
   Future<void> register(String fullName, String email, String password, String phoneNumber, String address, String role) async {
     try {
-      final response = await _apiService.register(fullName, email, password, phoneNumber, address, role);
-      _user = response['user'];
-      _authToken = response['token'];
-      _isAuthenticated = true;
-
-      await _storage.write(key: 'jwt_token', value: _authToken);
+      print('AUTH_PROVIDER: Registering...');
+      await _authService.register(fullName, email, password, phoneNumber, address, role);
+      
+      // After successful registration, get the user data
+      final user = await _authService.getCurrentUser();
+      if (user != null) {
+        _user = user.toJson();
+        _authToken = user.token;
+        _isAuthenticated = true;
+        print('AUTH_PROVIDER: Registration successful: ${user.email}');
+      } else {
+        print('AUTH_PROVIDER: Registration failed - no user data found');
+        throw Exception('Registration failed - no user data found');
+      }
 
       notifyListeners();
     } catch (e) {
+      print('AUTH_PROVIDER: Registration error: $e');
       rethrow;
     }
   }
 
   Future<void> logout() async {
     try {
-      await _apiService.logout();
-      await _storage.delete(key: 'jwt_token');
-
+      print('AUTH_PROVIDER: Logging out...');
+      await _authService.logout();
+      
       _authToken = null;
-      _isAuthenticated = false;
       _user = null;
+      _isAuthenticated = false;
 
+      print('AUTH_PROVIDER: Logout successful');
       notifyListeners();
     } catch (e) {
-      rethrow;
+      print('AUTH_PROVIDER: Logout error: $e');
+      // Even if server logout fails, clear local data
+      _authToken = null;
+      _user = null;
+      _isAuthenticated = false;
+      notifyListeners();
     }
   }
 } 

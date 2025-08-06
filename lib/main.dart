@@ -101,17 +101,6 @@ class MyApp extends StatelessWidget {
         '/profile': (context) => const ProfileScreen(),
         '/forgot-password': (context) => const ForgotPasswordScreen(),
       },
-      // Handle unknown routes
-      // onGenerateRoute: (settings) {
-      //   // You can add custom route handling here if needed
-      //   return MaterialPageRoute(
-      //     builder: (context) => const Scaffold(
-      //       body: Center(
-      //         child: Text('Page not found'),
-      //       ),
-      //     ),
-      //   );
-      // },
     );
   }
 }

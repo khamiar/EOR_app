@@ -3,7 +3,9 @@ import 'package:eoreporter_v1/constants/app_constants.dart';
 import 'package:eoreporter_v1/utils/animations.dart';
 import 'package:eoreporter_v1/services/api_service.dart';
 import 'package:eoreporter_v1/providers/auth_provider.dart';
+import 'package:eoreporter_v1/services/auth_checker_service.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 
 class MyReportsScreen extends StatefulWidget {
   const MyReportsScreen({super.key});
@@ -24,12 +26,50 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
   }
 
   Future<List<Map<String, dynamic>>> _loadReports() async {
-    final token = Provider.of<AuthProvider>(context, listen: false).authToken;
-    if (token == null) {
-      // Optionally, handle unauthenticated state (e.g., return empty list or throw)
-      return [];
+    try {
+      // Check authentication status using our unified checker
+      final isAuthenticated = await AuthCheckerService.isAuthenticated();
+      print('DEBUG: Authentication status: $isAuthenticated');
+      
+      if (!isAuthenticated) {
+        // If not authenticated, clear any corrupted auth data and prompt re-login
+        await AuthCheckerService.clearAuthData();
+        throw Exception('Authentication expired. Please login again.');
+      }
+      
+      // Call fetchMyReports - it handles token validation internally
+      final reports = await ApiService().fetchMyReports();
+      print('DEBUG: Successfully loaded ${reports.length} reports');
+      return reports;
+    } catch (e) {
+      print('DEBUG: Error in _loadReports: $e');
+      
+      // If it's an authentication error, navigate to login
+      if (e.toString().contains('Authentication expired') || 
+          e.toString().contains('Session expired') ||
+          e.toString().contains('not authenticated')) {
+        
+        // Show a user-friendly message and navigate to login after a delay
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Your session has expired. Please login again.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 3),
+            ),
+          );
+          
+          // Navigate to login after a short delay
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted) {
+              Navigator.of(context).pushReplacementNamed('/login');
+            }
+          });
+        }
+      }
+      
+      rethrow; // This will be caught by FutureBuilder
     }
-    return await ApiService().fetchMyReports(token);
   }
 
   List<Map<String, dynamic>> _filterReports(List<Map<String, dynamic>> reports) {
@@ -38,12 +78,12 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
       final title = report['title'].toString().toLowerCase();
       final description = report['description'].toString().toLowerCase();
       final status = report['status'].toString().toLowerCase();
-      final date = report['date'].toString().toLowerCase();
+      final reportedAt = report['reportedAt'].toString().toLowerCase();
       final query = _searchQuery.toLowerCase();
       return title.contains(query) ||
           description.contains(query) ||
           status.contains(query) ||
-          date.contains(query);
+          reportedAt.contains(query);
     }).toList();
   }
 
@@ -57,6 +97,15 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
         return Colors.green;
       default:
         return Colors.grey;
+    }
+  }
+
+  String _formatDate(String dateString) {
+    try {
+      final date = DateTime.parse(dateString);
+      return DateFormat('MMM dd, yyyy').format(date);
+    } catch (e) {
+      return dateString; // Fallback to original string if parsing fails
     }
   }
 
@@ -93,6 +142,115 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  void _showReportDetails(BuildContext context, Map<String, dynamic> report) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          report['title'],
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildDetailRow('Status', report['status'], _getStatusColor(report['status'])),
+              const SizedBox(height: 12),
+              _buildDetailRow('Region', report['region'] ?? 'Not specified'),
+              const SizedBox(height: 12),
+              _buildDetailRow('Location', report['manualLocation'] ?? report['location'] ?? 'Not specified'),
+              const SizedBox(height: 12),
+              _buildDetailRow('Reported', _formatDate(report['reportedAt'])),
+              const SizedBox(height: 16),
+              const Text(
+                'Description',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                report['description'],
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[700],
+                ),
+              ),
+              if (report['mediaUrl'] != null) ...[
+                const SizedBox(height: 16),
+                const Text(
+                  'Attachment',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  height: 60,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey[300]!),
+                  ),
+                  child: const Center(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.attachment, color: Colors.grey),
+                        SizedBox(width: 8),
+                        Text('Media attached', style: TextStyle(color: Colors.grey)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value, [Color? valueColor]) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 80,
+          child: Text(
+            '$label:',
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: 14,
+              color: valueColor ?? Colors.grey[700],
+              fontWeight: valueColor != null ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -160,7 +318,57 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (snapshot.hasError) {
-                  return const Center(child: Text('Failed to load reports'));
+                  return Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.error_outline,
+                          size: 48,
+                          color: Colors.red[400],
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Failed to load reports',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey[800],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 32),
+                          child: Text(
+                            snapshot.error.toString().contains('User not authenticated')
+                                ? 'Please login to view your reports'
+                                : snapshot.error.toString().contains('Network')
+                                ? 'Check your internet connection and try again'
+                                : 'Unable to load reports. Please try again.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _futureReports = _loadReports();
+                            });
+                          },
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Retry'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppConstants.primaryColor,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
                 }
                 final reports = _filterReports(snapshot.data ?? []);
                 if (reports.isEmpty) {
@@ -181,7 +389,15 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
                   );
                 }
 
-                return ListView.builder(
+                return RefreshIndicator(
+                  color: AppConstants.primaryColor,
+                  onRefresh: () async {
+                    setState(() {
+                      _futureReports = _loadReports();
+                    });
+                    await _futureReports;
+                  },
+                  child: ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
                   itemCount: reports.length,
                   itemBuilder: (context, index) {
@@ -196,7 +412,7 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
                         ),
                         child: InkWell(
                           onTap: () {
-                            // TODO: Implement report details view
+                              _showReportDetails(context, report);
                           },
                           borderRadius: BorderRadius.circular(12),
                           child: Padding(
@@ -291,7 +507,7 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
                                         ),
                                         const SizedBox(width: 4),
                                         Text(
-                                          report['date'],
+                                            _formatDate(report['reportedAt']),
                                           style: TextStyle(
                                             color: Colors.grey.shade600,
                                             fontSize: 13,
@@ -301,7 +517,7 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
                                     ),
                                     TextButton.icon(
                                       onPressed: () {
-                                        // TODO: Implement report details view
+                                          _showReportDetails(context, report);
                                       },
                                       icon: const Icon(Icons.arrow_forward),
                                       label: const Text('View Details'),
@@ -318,6 +534,7 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
                       ),
                     );
                   },
+                  ),
                 );
               },
             ),

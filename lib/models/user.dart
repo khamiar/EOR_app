@@ -23,7 +23,7 @@ class User {
     return User(
       id: json['id']?.toString() ?? '',
       fullName: json['fullName']?.toString() ?? '',
-      email: json['email'].toString(),
+      email: json['email']?.toString() ?? '',
       phoneNumber: json['phoneNumber']?.toString(),
       address: json['address']?.toString(),
       profileImageUrl: json['profileImageUrl']?.toString(),

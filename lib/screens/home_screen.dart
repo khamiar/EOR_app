@@ -22,7 +22,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final List<Widget> _screens = [];
+  late final List<Widget> _screens;
   int _selectedIndex = 0;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
@@ -31,53 +31,68 @@ class _HomeScreenState extends State<HomeScreen> {
   Directory? _downloadDirectory;
   final Dio _dio = Dio();
 
-  // Dummy announcements data
-  final List<Map<String, dynamic>> announcements = [
-    {
-      'title': 'Scheduled Maintenance',
-      'description': 'Power maintenance in downtown area from 10 PM to 4 AM',
-      'date': DateTime.now().subtract(const Duration(days: 1)),
-      'type': 'maintenance',
-      'attachment': {
-        'url': 'https://example.com/maintenance.pdf',
-        'name': 'maintenance_schedule.pdf',
-        'type': 'pdf'
-      }
-    },
-    {
-      'title': 'Emergency Outage',
-      'description': 'Unexpected power outage in north district due to storm',
-      'date': DateTime.now(),
-      'type': 'emergency',
-      'attachment': {
-        'url': 'https://example.com/outage.jpg',
-        'name': 'outage_area.jpg',
-        'type': 'image'
-      }
-    },
-    {
-      'title': 'New Solar Initiative',
-      'description': 'ZECO launching new solar power initiative for residential areas',
-      'date': DateTime.now().add(const Duration(days: 1)),
-      'type': 'announcement',
-      'attachment': null
-    },
-  ];
+  bool _isLoadingAnnouncements = false;
+  String? _announcementError;
+  List<Map<String, dynamic>> announcements = [];
+  
+  // Notification count state
+  int _unreadNotificationCount = 0;
+  Timer? _notificationCountTimer;
+
+  Future<void> _loadAnnouncements() async {
+    setState(() {
+      _isLoadingAnnouncements = true;
+      _announcementError = null;
+    });
+        try {
+      final apiAnnouncements = await ApiService().getAnnouncements();
+      setState(() {
+        announcements = apiAnnouncements.map((announcement) => {
+          'id': announcement['id'],
+          'title': announcement['title'],
+          'content': announcement['content'], // Use consistent field name
+          'description': announcement['content'], // Keep for backward compatibility
+          'date': DateTime.parse(announcement['createdAt'] ?? announcement['publishDate']),
+          'type': _mapCategoryToType(announcement['category']),
+          'attachment': announcement['attachmentUrl'] != null ? {
+            'url': announcement['attachmentUrl'],
+            'name': announcement['attachmentUrl']?.split('/').last ?? 'attachment',
+            'type': _getFileType(announcement['attachmentUrl'])
+          } : null,
+        }).toList();
+        _isLoadingAnnouncements = false;
+      });
+    } catch (e) {
+      setState(() {
+        _announcementError = e.toString();
+        _isLoadingAnnouncements = false;
+      });
+    }
+  }
+
+    String _mapCategoryToType(String? category) {
+    switch (category?.toLowerCase()) {
+      case 'maintenance': return 'maintenance';
+      case 'emergency': return 'emergency';
+      default: return 'announcement';
+    }
+  }
 
   @override
   void initState() {
     super.initState();
-    _screens.addAll([
+    _screens = [
       const MyReportsScreen(),
       const FeedbackScreen(),
       const NotificationsScreen(),
-    ]);
-    _initializeDownloadDirectory();
+    ];
+    _loadAnnouncements();
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _notificationCountTimer?.cancel();
     super.dispose();
   }
 
@@ -109,6 +124,14 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // Method to get file type from attachment URL
+  String? _getFileType(String? url) {
+    if (url == null) return null;
+    if (url.toLowerCase().endsWith('.pdf')) return 'pdf';
+    if (url.toLowerCase().contains('.jpg') || url.toLowerCase().contains('.png')) return 'image';
+    return 'file';
+  }
+
   Future<void> _checkExistingDownloads() async {
     try {
       final files = await _downloadDirectory!.list().toList();
@@ -127,6 +150,34 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       debugPrint('Error checking existing downloads: $e');
     }
+  }
+
+  // Notification count management methods
+  Future<void> _loadUnreadNotificationCount() async {
+    try {
+      final count = await ApiService.fetchUnreadCount();
+      if (mounted) {
+        setState(() {
+          _unreadNotificationCount = count;
+        });
+      }
+    } catch (e) {
+      print('Error loading notification count: $e');
+      // Don't show error to user for this background operation
+      // API fallback will handle the error gracefully
+    }
+  }
+
+  void _startNotificationCountTimer() {
+    // Update notification count every 30 seconds
+    _notificationCountTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _loadUnreadNotificationCount();
+    });
+  }
+
+  // Method to update count when user navigates to notifications
+  void _updateNotificationCount() {
+    _loadUnreadNotificationCount();
   }
 
   List<Map<String, dynamic>> get filteredAnnouncements {
@@ -671,30 +722,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       });
                     },
                   ),
-                   const SizedBox(width: 8),
-                  _buildCategoryCard(
-                    'Announce',
-                    Icons.campaign,
-                    Colors.green,
-                    () {
-                      setState(() {
-                        _searchQuery = 'announcement';
-                        _searchController.text = 'announcement';
-                      });
-                    },
-                  ),
-                   const SizedBox(width: 8),
-                  _buildCategoryCard(
-                    'Announce',
-                    Icons.campaign,
-                    Colors.green,
-                    () {
-                      setState(() {
-                        _searchQuery = 'announcement';
-                        _searchController.text = 'announcement';
-                      });
-                    },
-                  ),
                 ],
               ),
             ),
@@ -713,7 +740,36 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           
-          const SizedBox(height: 12),
+          _isLoadingAnnouncements
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              : _announcementError != null
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.error_outline, size: 48, color: Colors.red[400]),
+                            const SizedBox(height: 8),
+                            Text('Error loading announcements', 
+                                style: TextStyle(color: Colors.red[600])),
+                            const SizedBox(height: 8),
+                            ElevatedButton(
+                              onPressed: _loadAnnouncements,
+                              child: const Text('Retry'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : Column(
+                      children: [
+                        const SizedBox(height: 12),
           
           filteredAnnouncements.isEmpty
               ? Center(
@@ -824,6 +880,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     );
                   },
                 ),
+                      ],
+                    ),
         ],
       ),
     );
@@ -870,25 +928,62 @@ class _HomeScreenState extends State<HomeScreen> {
             setState(() {
               _selectedIndex = index;
             });
+            
+            // If user tapped on notifications tab, update count
+            if (index == 3) {
+              _updateNotificationCount();
+            }
           },
           type: BottomNavigationBarType.fixed,
           selectedItemColor: AppConstants.primaryColor,
           unselectedItemColor: Colors.grey,
-          items: const [
-            BottomNavigationBarItem(
+          items: [
+            const BottomNavigationBarItem(
               icon: Icon(Icons.home),
               label: 'Home',
             ),
-            BottomNavigationBarItem(
+            const BottomNavigationBarItem(
               icon: Icon(Icons.list_alt),
               label: 'My Reports',
             ),
-            BottomNavigationBarItem(
+            const BottomNavigationBarItem(
               icon: Icon(Icons.feedback),
               label: 'Feedback',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.notifications),
+              icon: Stack(
+                children: [
+                  const Icon(Icons.notifications),
+                  if (_unreadNotificationCount > 0)
+                    Positioned(
+                    
+                      right: 0,
+                      top: -6,
+                      // child: Container(
+                      //   padding: const EdgeInsets.all(4),
+                      //   decoration: BoxDecoration(
+                      //     color: Colors.red,
+                      //     borderRadius: BorderRadius.circular(10),
+                      //   ),
+                      //   constraints: const BoxConstraints(
+                      //     minWidth: 18,
+                      //     minHeight: 18,
+                      //   ),
+                        child: Text(
+                          _unreadNotificationCount > 99 
+                              ? '99+' 
+                              : '$_unreadNotificationCount',
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    // ),
+                ],
+              ),
               label: 'Notifications',
             ),
           ],
@@ -898,7 +993,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Navigator.pushNamed(context, '/report');
           },
           backgroundColor: AppConstants.primaryColor,
-          child: const Icon(Icons.power_off,  color: Colors.red),
+          child: const Icon(Icons.power_off,  color: Colors.white),
         ),
       ),
     );

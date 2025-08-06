@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:eoreporter_v1/constants/app_constants.dart';
 import 'package:eoreporter_v1/services/auth_service.dart';
+import 'package:eoreporter_v1/providers/auth_provider.dart';
+import 'package:provider/provider.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -96,6 +98,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         );
 
         if (mounted) {
+          // Refresh AuthProvider state to ensure consistency
+          final authProvider = Provider.of<AuthProvider>(context, listen: false);
+          await authProvider.refreshAuthStatus();
+          
+          // Add a small delay to ensure authentication state is properly set
+          await Future.delayed(const Duration(milliseconds: 500));
           Navigator.of(context).pushReplacementNamed('/home');
         }
       } catch (e) {

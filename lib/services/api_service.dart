@@ -3,6 +3,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:eoreporter_v1/constants/app_constants.dart';
 import 'package:http_parser/http_parser.dart';
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 class NotificationModel {
   final int id;
@@ -32,9 +33,9 @@ class ApiService {
       await _storage.delete(key: 'jwt_token');
       await _storage.delete(key: AppConstants.userKey);
       await _storage.delete(key: 'user');
-      print('🧹 All tokens cleared from storage');
+      developer.log('All tokens cleared from storage', name: 'ApiService');
     } catch (e) {
-      print('Error clearing tokens: $e');
+              developer.log('Error clearing tokens: $e', name: 'ApiService');
     }
   }
   
@@ -165,6 +166,7 @@ class ApiService {
 
   Future<Map<String, dynamic>> submitOutageReport({
     required String title,
+    required String region,
     required String description,
     required String location,
     required double latitude,
@@ -180,6 +182,7 @@ class ApiService {
       // Create the report data with proper types
       final reportData = {
         'title': title, // <-- This will now be the selected category
+        'region': region,
         'description': description,
         'manualLocation': location,
         'latitude': latitude.toString(), 
@@ -225,18 +228,54 @@ class ApiService {
     }
   }
 
-  Future<List<Map<String, dynamic>>> fetchMyReports(String token) async {
-    final response = await _dio.get(
-      '${AppConstants.outagesEndpoint}/my',
-      options: Options(
-        headers: {'Authorization': 'Bearer $token'},
-      ),
-    );
-    if (response.statusCode == 200) {
-      final List data = response.data;
-      return data.cast<Map<String, dynamic>>();
-    } else {
-      throw Exception('Failed to load reports');
+  Future<List<Map<String, dynamic>>> fetchMyReports() async {
+    try {
+      // Check if user has valid token
+      final token = await _storage.read(key: AppConstants.tokenKey);
+      print('DEBUG: Token from storage: ${token != null ? "Token exists (length: ${token.length})" : "No token found"}');
+      
+      if (token == null) {
+        throw Exception('No authentication token found. Please login again.');
+      }
+      
+      print('DEBUG: Making request to ${AppConstants.outagesEndpoint}/my');
+      final response = await _dio.get(
+        '${AppConstants.outagesEndpoint}/my',
+        options: Options(
+          headers: {'Authorization': 'Bearer $token'},
+        ),
+      );
+      
+      print('DEBUG: Response status: ${response.statusCode}');
+      print('DEBUG: Response data type: ${response.data.runtimeType}');
+      
+      if (response.statusCode == 200) {
+        final List data = response.data;
+        print('DEBUG: Found ${data.length} reports');
+        return data.cast<Map<String, dynamic>>();
+      } else {
+        throw Exception('Failed to load reports: HTTP ${response.statusCode}');
+      }
+    } on DioException catch (e) {
+      print('DEBUG: DioException occurred');
+      print('DEBUG: Error type: ${e.type}');
+      print('DEBUG: Response status: ${e.response?.statusCode}');
+      print('DEBUG: Response data: ${e.response?.data}');
+      
+      if (e.response?.statusCode == 401) {
+        // Token expired or invalid
+        await _clearAllTokens();
+        throw Exception('Session expired. Please login again.');
+      } else if (e.type == DioExceptionType.connectionTimeout || 
+                 e.type == DioExceptionType.receiveTimeout) {
+        throw Exception(AppConstants.networkError);
+      } else if (e.response?.statusCode == 404) {
+        throw Exception('Reports endpoint not found. Please contact support.');
+      }
+      throw Exception('Error fetching reports: ${e.response?.data['message'] ?? e.message}');
+    } catch (e) {
+      print('DEBUG: General exception: $e');
+      throw Exception('Unexpected error: ${e.toString()}');
     }
   }
 
@@ -413,14 +452,93 @@ class ApiService {
   }
 
   static Future<int> fetchUnreadCount() async {
-    final response = await Dio().get('${AppConstants.apiBaseUrl}${AppConstants.notificationsEndpoint}/unread-count');
-    if (response.statusCode == 200) {
-      // If the backend returns just the count as a number
-      return int.parse(response.data.toString());
-      // If the backend returns a JSON object like {"count": 5}, use:
-      // return response.data['count'];
+    try {
+      final storage = const FlutterSecureStorage();
+      final token = await storage.read(key: AppConstants.tokenKey);
+      
+      if (token == null) {
+        return 0; // No token means no authenticated user
+      }
+      
+      final dio = Dio();
+      dio.options.baseUrl = AppConstants.apiBaseUrl;
+      
+      final response = await dio.get(
+        '${AppConstants.notificationsEndpoint}/unread/count',
+        options: Options(
+          headers: {'Authorization': 'Bearer $token'},
+        ),
+      );
+      
+      if (response.statusCode == 200) {
+        // Backend returns Long as JSON number, not string
+        if (response.data is int) {
+          return response.data;
+        } else if (response.data is String) {
+          return int.tryParse(response.data) ?? 0;
+        } else {
+          // If response is Map with count key
+          if (response.data is Map && response.data.containsKey('count')) {
+            return response.data['count'] ?? 0;
+          }
+          // Try parsing as string if it's a number
+          return int.tryParse(response.data.toString()) ?? 0;
+        }
+      }
+      return 0;
+    } catch (e) {
+      print('Error fetching unread count: $e');
+      
+      // Fallback: Count unread notifications locally
+      try {
+        return await _fallbackUnreadCount();
+      } catch (fallbackError) {
+        print('Fallback count also failed: $fallbackError');
+        return 0;
+      }
     }
-    return 0;
+  }
+
+  // Fallback method to count unread notifications locally
+  static Future<int> _fallbackUnreadCount() async {
+    try {
+      final storage = const FlutterSecureStorage();
+      final token = await storage.read(key: AppConstants.tokenKey);
+      
+      if (token == null) return 0;
+      
+      final dio = Dio();
+      dio.options.baseUrl = AppConstants.apiBaseUrl;
+      
+      final response = await dio.get(
+        AppConstants.notificationsEndpoint,
+        options: Options(
+          headers: {'Authorization': 'Bearer $token'},
+        ),
+      );
+      
+      if (response.statusCode == 200 && response.data is List) {
+        final notifications = response.data as List;
+        int unreadCount = 0;
+        
+        for (var notification in notifications) {
+          if (notification is Map<String, dynamic>) {
+            final isRead = notification['read'] ?? notification['isRead'] ?? false;
+            if (!isRead) {
+              unreadCount++;
+            }
+          }
+        }
+        
+        print('Fallback count: Found $unreadCount unread notifications');
+        return unreadCount;
+      }
+      
+      return 0;
+    } catch (e) {
+      print('Fallback count error: $e');
+      return 0;
+    }
   }
 
   Future<bool> deleteNotification(int id) async {
@@ -430,6 +548,33 @@ class ApiService {
     } catch (e) {
       // Optionally log error
       return false;
+    }
+  }
+
+  Future<List<dynamic>> getAnnouncements() async {
+    if (await _isOfflineMode()) {
+      _throwOfflineError('Announcements');
+    }
+
+    try {
+      final response = await _dio.get(AppConstants.announcementsEndpoint);
+      if (response.statusCode == 200) {
+        final List data = response.data;
+        return data.cast<Map<String, dynamic>>();
+      } else {
+        throw Exception('Failed to get announcements: HTTP ${response.statusCode}');
+      }
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 401) {
+        await _clearAllTokens();
+        throw Exception('Session expired. Please login again.');
+      } else if (e.type == DioExceptionType.connectionTimeout || 
+                 e.type == DioExceptionType.receiveTimeout) {
+        throw Exception(AppConstants.networkError);
+      } 
+      throw Exception('Failed to get announcements: ${e.response?.data['message'] ?? e.message}');
+    } catch (e) {
+      throw Exception('Unexpected error: ${e.toString()}');
     }
   }
 }

@@ -14,19 +14,13 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _addressController = TextEditingController();
-  final _currentPasswordController = TextEditingController();
-  final _newPasswordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
   
   final AuthService _authService = AuthService();
   User? _currentUser;
-  bool _isEditing = false;
-  bool _isChangingPassword = false;
   bool _isLoading = true;
   File? _pickedImage;
   String? _localProfileImageUrl;
@@ -43,7 +37,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final localUrl = prefs.getString('profileImageUrl');
 
     try {
+      print('PROFILE: Loading user data...');
       final user = await _authService.getCurrentUser();
+      print('PROFILE: User loaded: ${user?.email}');
+      
       if (mounted) {
         setState(() {
           _currentUser = user?.copyWith(profileImageUrl: localUrl ?? user.profileImageUrl);
@@ -53,8 +50,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _addressController.text = user?.address ?? '';
           _isLoading = false;
         });
+        print('PROFILE: User data set successfully');
       }
     } catch (e) {
+      print('PROFILE: Error loading user data: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -76,21 +75,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
   }
 
-  Future<void> _saveLocalProfileImageUrl(String url) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('profileImageUrl', url);
-    setState(() {
-      _localProfileImageUrl = url;
-    });
-  }
 
-  Future<void> _clearLocalProfileImageUrl() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('profileImageUrl');
-    setState(() {
-      _localProfileImageUrl = null;
-    });
-  }
 
   String _getInitials(String? fullName, String? email) {
     if (fullName != null && fullName.isNotEmpty) {
@@ -115,82 +100,142 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _emailController.dispose();
     _phoneController.dispose();
     _addressController.dispose();
-    _currentPasswordController.dispose();
-    _newPasswordController.dispose();
-    _confirmPasswordController.dispose();
     super.dispose();
   }
 
-  void _toggleEdit() {
-    setState(() {
-      _isEditing = !_isEditing;
-      if (!_isEditing) {
-        // Reset form if canceling edit
-        _loadUserData();
-      }
-    });
-  }
-
-  void _togglePasswordChange() {
-    setState(() {
-      _isChangingPassword = !_isChangingPassword;
-      if (!_isChangingPassword) {
-        // Clear password fields if canceling
-        _currentPasswordController.clear();
-        _newPasswordController.clear();
-        _confirmPasswordController.clear();
-      }
-    });
-  }
-
-  void _saveProfile() {
-    if (_formKey.currentState!.validate()) {
-      // TODO: Implement profile update API call
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Profile updated successfully'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      setState(() {
-        _isEditing = false;
-      });
-    }
-  }
-
-  void _changePassword() {
-    if (_formKey.currentState!.validate()) {
-      if (_newPasswordController.text != _confirmPasswordController.text) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('New passwords do not match'),
-            backgroundColor: Colors.red,
+  void _showEditDialog(String field, String currentValue, String title, IconData icon) {
+    final controller = TextEditingController(text: currentValue);
+    
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(icon, color: AppConstants.primaryColor),
+              const SizedBox(width: 8),
+              Text('Edit $title'),
+            ],
           ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: controller,
+                decoration: InputDecoration(
+                  labelText: title,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                autofocus: true,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                // TODO: Implement API call to update the field
+                setState(() {
+                  switch (field) {
+                    case 'name':
+                      _nameController.text = controller.text;
+                      break;
+                    case 'email':
+                      _emailController.text = controller.text;
+                      break;
+                    case 'phone':
+                      _phoneController.text = controller.text;
+                      break;
+                    case 'address':
+                      _addressController.text = controller.text;
+                      break;
+                  }
+                });
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('$title updated successfully'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppConstants.primaryColor,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Save'),
+            ),
+          ],
         );
-        return;
-      }
-      // TODO: Implement password change API call
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Password changed successfully'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      setState(() {
-        _isChangingPassword = false;
-      });
-      _currentPasswordController.clear();
-      _newPasswordController.clear();
-      _confirmPasswordController.clear();
-    }
+      },
+    );
   }
 
-  void _logout() async {
-    await _authService.logout();
-    // await _clearLocalProfileImageUrl(); // This line is removed as per the edit hint
-    if (mounted) {
-      Navigator.of(context).pushReplacementNamed('/login');
-    }
+  Widget _buildInfoCard(String title, String value, IconData icon, String field) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: InkWell(
+        onTap: () => _showEditDialog(field, value, title, icon),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppConstants.primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  icon,
+                  color: AppConstants.primaryColor,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[600],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      value.isEmpty ? 'Not set' : value,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.edit,
+                color: Colors.grey[400],
+                size: 20,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -222,242 +267,50 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(AppConstants.defaultPadding),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // Profile Picture with Initials
-              Stack(
-                children: [
-                  CircleAvatar(
-                    radius: 50,
-                    backgroundColor: AppConstants.primaryColor,
-                    backgroundImage: _localProfileImageUrl != null && _localProfileImageUrl!.isNotEmpty
-                        ? NetworkImage(_localProfileImageUrl!)
-                        : null,
-                    child: (_localProfileImageUrl == null || _localProfileImageUrl!.isEmpty)
-                        ? Text(
-                            _getInitials(_currentUser?.fullName, _currentUser?.email),
-                            style: const TextStyle(fontSize: 36, color: Colors.white),
-                          )
-                        : null,
-                  ),
-                ],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Profile Picture with Initials
+            Stack(
+              children: [
+                CircleAvatar(
+                  radius: 50,
+                  backgroundColor: AppConstants.primaryColor,
+                  backgroundImage: _localProfileImageUrl != null && _localProfileImageUrl!.isNotEmpty
+                      ? NetworkImage(_localProfileImageUrl!)
+                      : null,
+                  child: (_localProfileImageUrl == null || _localProfileImageUrl!.isEmpty)
+                      ? Text(
+                          _getInitials(_currentUser?.fullName, _currentUser?.email),
+                          style: const TextStyle(fontSize: 36, color: Colors.white),
+                        )
+                      : null,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _currentUser?.fullName ?? 'User',
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
               ),
-              const SizedBox(height: 8),
-              Text(
-                _currentUser?.fullName ?? 'User',
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
+            ),
+            Text(
+              _currentUser?.email ?? '',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey[600],
               ),
-              Text(
-                _currentUser?.email ?? '',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey[600],
-                ),
-              ),
-              const SizedBox(height: 32),
-              
-              // Profile Info
-              TextFormField(
-                controller: _nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Full Name',
-                  prefixIcon: Icon(Icons.person),
-                  border: OutlineInputBorder(),
-                ),
-                enabled: _isEditing,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter your name';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _emailController,
-                decoration: const InputDecoration(
-                  labelText: 'Email',
-                  prefixIcon: Icon(Icons.email),
-                  border: OutlineInputBorder(),
-                ),
-                enabled: false, // Email should not be editable
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter your email';
-                  }
-                  if (!value.contains('@')) {
-                    return 'Please enter a valid email';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _phoneController,
-                decoration: const InputDecoration(
-                  labelText: 'Phone Number',
-                  prefixIcon: Icon(Icons.phone),
-                  border: OutlineInputBorder(),
-                ),
-                enabled: _isEditing,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter your phone number';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _addressController,
-                decoration: const InputDecoration(
-                  labelText: 'Address',
-                  prefixIcon: Icon(Icons.location_on),
-                  border: OutlineInputBorder(),
-                ),
-                enabled: _isEditing,
-                maxLines: 2,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter your address';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 24),
-              // Edit/Save Buttons
-              if (!_isEditing)
-                ElevatedButton(
-                  onPressed: _toggleEdit,
-                  child: const Text('Edit Profile'),
-                )
-              else
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    ElevatedButton(
-                      onPressed: _saveProfile,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                      ),
-                      child: const Text('Save'),
-                    ),
-                    const SizedBox(width: 16),
-                    ElevatedButton(
-                      onPressed: _toggleEdit,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.grey,
-                      ),
-                      child: const Text('Cancel'),
-                    ),
-                  ],
-                ),
-              const SizedBox(height: 32),
-              // Change Password Section
-              if (!_isChangingPassword)
-                TextButton(
-                  onPressed: _togglePasswordChange,
-                  child: const Text('Change Password'),
-                )
-              else
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      'Change Password',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _currentPasswordController,
-                      decoration: const InputDecoration(
-                        labelText: 'Current Password',
-                        prefixIcon: Icon(Icons.lock),
-                      ),
-                      obscureText: true,
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter your current password';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _newPasswordController,
-                      decoration: const InputDecoration(
-                        labelText: 'New Password',
-                        prefixIcon: Icon(Icons.lock_outline),
-                      ),
-                      obscureText: true,
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter a new password';
-                        }
-                        if (value.length < 6) {
-                          return 'Password must be at least 6 characters';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _confirmPasswordController,
-                      decoration: const InputDecoration(
-                        labelText: 'Confirm New Password',
-                        prefixIcon: Icon(Icons.lock_outline),
-                      ),
-                      obscureText: true,
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please confirm your new password';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        ElevatedButton(
-                          onPressed: _changePassword,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
-                          ),
-                          child: const Text('Update Password'),
-                        ),
-                        const SizedBox(width: 16),
-                        ElevatedButton(
-                          onPressed: _togglePasswordChange,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.grey,
-                          ),
-                          child: const Text('Cancel'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              const SizedBox(height: 32),
-              // Logout Button
-              ElevatedButton(
-                onPressed: _logout,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                ),
-                child: const Text('Logout'),
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 32),
+            
+            // Profile Info Cards
+            _buildInfoCard('Full Name', _nameController.text, Icons.person, 'name'),
+            _buildInfoCard('Email', _emailController.text, Icons.email, 'email'),
+            _buildInfoCard('Phone Number', _phoneController.text, Icons.phone, 'phone'),
+            _buildInfoCard('Address', _addressController.text, Icons.location_on, 'address'),
+          ],
         ),
       ),
     );

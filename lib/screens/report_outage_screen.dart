@@ -18,6 +18,7 @@ class ReportOutageScreen extends StatefulWidget {
 class _ReportOutageScreenState extends State<ReportOutageScreen> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
+  final _regionController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _locationController = TextEditingController();
   final _apiService = ApiService();
@@ -37,6 +38,15 @@ class _ReportOutageScreenState extends State<ReportOutageScreen> {
     'Total Outage',
     'Other',
   ];
+
+final List<String> _regions = [
+  'Mjini Magharibi',
+  'Kaskazini Unguja',
+  'Kusini Unguja',
+  'Kaskazini Pemba',
+  'Kusini Pemba'
+];
+
 
   String? _selectedCategory;
 
@@ -237,6 +247,7 @@ class _ReportOutageScreenState extends State<ReportOutageScreen> {
     try {
       await _apiService.submitOutageReport(
         title: _titleController.text,
+        region: _regionController.text,
         description: _descriptionController.text,
         location: _locationController.text,
         latitude: _currentPosition?.latitude ?? 0.0,
@@ -301,13 +312,13 @@ class _ReportOutageScreenState extends State<ReportOutageScreen> {
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 5),
               Text(
                 'Help us restore power faster by providing accurate information.',
                 style: TextStyle(fontSize: 15, color: Colors.grey[700]),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 25),
 
               // Category Field
               DropdownButtonFormField<String>(
@@ -332,7 +343,27 @@ class _ReportOutageScreenState extends State<ReportOutageScreen> {
                 validator: (value) => value == null || value.isEmpty ? 'Please select a category' : null,
               ),
               const SizedBox(height: 20),
-
+              DropdownButtonFormField<String>(
+                value: _regionController.text.isEmpty ? null : _regionController.text,
+                decoration: InputDecoration(
+                  labelText: 'Region',
+                  prefixIcon: const Icon(Icons.map),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                items: _regions.map((region) {
+                  return DropdownMenuItem<String>(
+                    value: region,
+                    child: Text(region),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _regionController.text = value ?? '';
+                  });
+                },
+                validator: (value) => value == null || value.isEmpty ? 'Please select a region' : null,
+              ),
+              const SizedBox(height: 20),
               // Description Field
               TextFormField(
                 controller: _descriptionController,
