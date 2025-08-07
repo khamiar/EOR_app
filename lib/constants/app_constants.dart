@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 
 class AppConstants {
   // API Configuration
-  static const String apiBaseUrl = 'http://10.8.2.226:8080/api';
+  static const String apiBaseUrl = 'http://192.168.245.151:8080/api';
   // static const String apiBaseUrl = 'http://localhost:8080/api';
+  static const String baseUrl = 'http://192.168.245.151:8080';
+  // static const String baseUrl = 'http://localhost:8080';
   
   // App Configuration
   static const String appName = 'EOReporter';

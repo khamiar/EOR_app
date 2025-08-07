@@ -12,6 +12,9 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_pdfview/flutter_pdfview.dart';
+import 'package:external_path/external_path.dart';
 import '../services/api_service.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -29,7 +32,8 @@ class _HomeScreenState extends State<HomeScreen> {
   final Map<String, double> _downloadProgress = {};
   final Map<String, String> _downloadedFiles = {};
   Directory? _downloadDirectory;
-  final Dio _dio = Dio();
+  late final Dio _dio;
+  final FlutterSecureStorage _storage = const FlutterSecureStorage();
 
   bool _isLoadingAnnouncements = false;
   String? _announcementError;
@@ -38,6 +42,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // Notification count state
   int _unreadNotificationCount = 0;
   Timer? _notificationCountTimer;
+  Timer? _announcementsRefreshTimer;
 
   Future<void> _loadAnnouncements() async {
     setState(() {
@@ -55,7 +60,7 @@ class _HomeScreenState extends State<HomeScreen> {
           'date': DateTime.parse(announcement['createdAt'] ?? announcement['publishDate']),
           'type': _mapCategoryToType(announcement['category']),
           'attachment': announcement['attachmentUrl'] != null ? {
-            'url': announcement['attachmentUrl'],
+            'url': _buildFullUrl(announcement['attachmentUrl']),
             'name': announcement['attachmentUrl']?.split('/').last ?? 'attachment',
             'type': _getFileType(announcement['attachmentUrl'])
           } : null,
@@ -86,14 +91,35 @@ class _HomeScreenState extends State<HomeScreen> {
       const FeedbackScreen(),
       const NotificationsScreen(),
     ];
+    _initializeDio();
+    _initializeDownloadDirectory();
     _loadAnnouncements();
+    _startAnnouncementsRefreshTimer();
   }
 
   @override
   void dispose() {
     _searchController.dispose();
     _notificationCountTimer?.cancel();
+    _announcementsRefreshTimer?.cancel();
     super.dispose();
+  }
+
+  void _initializeDio() {
+    _dio = Dio();
+    _dio.options.baseUrl = AppConstants.apiBaseUrl;
+    _dio.options.connectTimeout = const Duration(seconds: 5);
+    _dio.options.receiveTimeout = const Duration(seconds: 3);
+    _dio.interceptors.add(InterceptorsWrapper(
+      onRequest: (options, handler) async {
+        // Add authentication token to all requests
+        final token = await _storage.read(key: AppConstants.tokenKey);
+        if (token != null) {
+          options.headers['Authorization'] = 'Bearer $token';
+        }
+        return handler.next(options);
+      },
+    ));
   }
 
   Future<void> _initializeDownloadDirectory() async {
@@ -130,6 +156,26 @@ class _HomeScreenState extends State<HomeScreen> {
     if (url.toLowerCase().endsWith('.pdf')) return 'pdf';
     if (url.toLowerCase().contains('.jpg') || url.toLowerCase().contains('.png')) return 'image';
     return 'file';
+  }
+
+  // Method to build full URL for attachments
+  String _buildFullUrl(String? relativeUrl) {
+    if (relativeUrl == null) return '';
+    
+    // If it's already a full URL, return as is
+    if (relativeUrl.startsWith('http://') || relativeUrl.startsWith('https://')) {
+      return relativeUrl;
+    }
+    
+    // Remove leading slash if present
+    final cleanUrl = relativeUrl.startsWith('/') ? relativeUrl.substring(1) : relativeUrl;
+    
+    // Extract base URL from apiBaseUrl (remove /api suffix)
+    const baseUrl = AppConstants.baseUrl;
+    
+    // Build full URL using the base URL from constants
+    // Files are stored in the uploads directory, so we need to include that in the path
+    return '$baseUrl/uploads/$cleanUrl';
   }
 
   Future<void> _checkExistingDownloads() async {
@@ -172,6 +218,13 @@ class _HomeScreenState extends State<HomeScreen> {
     // Update notification count every 30 seconds
     _notificationCountTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _loadUnreadNotificationCount();
+    });
+  }
+
+  void _startAnnouncementsRefreshTimer() {
+    // Refresh announcements every 60 seconds
+    _announcementsRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      _loadAnnouncements();
     });
   }
 
@@ -219,11 +272,38 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _downloadFile(Map<String, dynamic> attachment) async {
-    if (_downloadedFiles.containsKey(attachment['url'])) {
-      _openDownloadedFile(_downloadedFiles[attachment['url']]!, attachment['type']);
-      return;
+  Future<void> _downloadFileForViewing(Map<String, dynamic> attachment) async {
+    // For viewing, we'll use the app's internal directory to avoid permission issues
+    if (_downloadDirectory == null) {
+      await _initializeDownloadDirectory();
     }
+
+    final filePath = Platform.isWindows
+        ? '${_downloadDirectory!.path}\\${attachment['name']}'
+        : '${_downloadDirectory!.path}/${attachment['name']}';
+
+    await _dio.download(
+      attachment['url'],
+      filePath,
+      options: Options(
+        receiveTimeout: const Duration(minutes: 2),
+        sendTimeout: const Duration(minutes: 2),
+      ),
+    ).timeout(
+      const Duration(minutes: 5),
+      onTimeout: () {
+        throw TimeoutException('Download timed out');
+      },
+    );
+
+    setState(() {
+      _downloadedFiles[attachment['url']] = filePath;
+    });
+  }
+
+  Future<void> _downloadFile(Map<String, dynamic> attachment) async {
+    // Always download, don't check if already downloaded
+    // If user wants to open downloaded file, they should use the view button
 
     try {
       if (Platform.isAndroid || Platform.isIOS) {
@@ -241,9 +321,23 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
 
+      // Get the Downloads directory path
+      String downloadPath;
+      if (Platform.isAndroid) {
+        downloadPath = await ExternalPath.getExternalStoragePublicDirectory(ExternalPath.DIRECTORY_DOWNLOADS);
+      } else if (Platform.isIOS) {
+        downloadPath = await ExternalPath.getExternalStoragePublicDirectory(ExternalPath.DIRECTORY_DOWNLOADS);
+      } else {
+        // For Windows, use the app's download directory
+        if (_downloadDirectory == null) {
+          await _initializeDownloadDirectory();
+        }
+        downloadPath = _downloadDirectory!.path;
+      }
+
       final filePath = Platform.isWindows
-          ? '${_downloadDirectory!.path}\\${attachment['name']}'
-          : '${_downloadDirectory!.path}/${attachment['name']}';
+          ? '$downloadPath\\${attachment['name']}'
+          : '$downloadPath/${attachment['name']}';
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -288,7 +382,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 const Icon(Icons.check_circle, color: Colors.white),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text('${attachment['name']} downloaded successfully'),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('${attachment['name']} downloaded successfully'),
+                      Text(
+                        Platform.isAndroid ? 'Saved to Downloads folder' : 'Saved to device',
+                        style: const TextStyle(fontSize: 12, color: Colors.white70),
+                      ),
+                    ],
+                  ),
                 ),
                 TextButton(
                   onPressed: () => _openDownloadedFile(filePath, attachment['type']),
@@ -329,11 +433,43 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final file = File(filePath);
       if (await file.exists()) {
-        final uri = Uri.file(filePath);
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri);
+        // For files saved to Downloads folder, try to open with external app
+        if (Platform.isAndroid) {
+          // Try to open with external app first
+          try {
+            final uri = Uri.file(filePath);
+            if (await canLaunchUrl(uri)) {
+              await launchUrl(uri);
+              return;
+            }
+          } catch (e) {
+            // If external app fails, fall back to in-app viewer
+          }
+          
+          // Fall back to in-app viewer
+          if (type == 'pdf') {
+            _showPdfViewerFromPath(filePath, file.path.split('/').last);
+          } else if (type == 'image') {
+            _showImageViewerFromPath(filePath, file.path.split('/').last);
+          } else {
+            // For other file types, show a message
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('File saved to Downloads: ${file.path.split('/').last}'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            }
+          }
         } else {
-          throw Exception('Could not open file');
+          // For other platforms, try to open with external app
+          final uri = Uri.file(filePath);
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(uri);
+          } else {
+            throw Exception('Could not open file');
+          }
         }
       } else {
         throw Exception('File not found');
@@ -430,7 +566,7 @@ class _HomeScreenState extends State<HomeScreen> {
               title: Text('View ${attachment['name']} Online'),
               onTap: () {
                 Navigator.pop(context);
-                _handleAttachmentTap(attachment);
+                _showInAppViewer(attachment);
               },
             ),
             ListTile(
@@ -450,15 +586,65 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _handleAttachmentTap(Map<String, dynamic> attachment) async {
-    final url = Uri.parse(attachment['url']);
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url);
-    } else {
+  void _handleDownloadTap(Map<String, dynamic> attachment) async {
+    final bool isDownloaded = _downloadedFiles.containsKey(attachment['url']);
+    
+    if (isDownloaded) {
+      // Show confirmation dialog for re-download
+      final shouldRedownload = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text('File Already Downloaded'),
+            content: Text('${attachment['name']} is already saved to your phone. Do you want to download it again?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Re-download'),
+              ),
+            ],
+          );
+        },
+      );
+      
+      if (shouldRedownload != true) {
+        return;
+      }
+    }
+    
+    // Proceed with download
+    _downloadFile(attachment);
+  }
+
+  void _showInAppViewer(Map<String, dynamic> attachment) async {
+    final bool isPDF = attachment['type'] == 'pdf';
+    final bool isImage = attachment['type'] == 'image';
+    
+    try {
+      if (isPDF) {
+        // Show PDF in app
+        _showPdfViewer(attachment);
+      } else if (isImage) {
+        // Show image in app
+        _showImageViewer(attachment);
+      } else {
+        // For other file types, try to open externally
+        final url = Uri.parse(attachment['url']);
+        if (await canLaunchUrl(url)) {
+          await launchUrl(url);
+        } else {
+          throw Exception('Could not open file');
+        }
+      }
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not open attachment'),
+          SnackBar(
+            content: Text('Error opening file: ${e.toString()}'),
             backgroundColor: Colors.red,
           ),
         );
@@ -466,8 +652,419 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _showPdfViewer(Map<String, dynamic> attachment) async {
+    // Check if file is already downloaded
+    String? filePath = _downloadedFiles[attachment['url']];
+    
+    if (filePath == null) {
+      // Show loading dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return Dialog(
+            backgroundColor: Colors.white,
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 16),
+                  const Text('Loading PDF...'),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+      
+      try {
+        // Download the file first
+        await _downloadFileForViewing(attachment);
+        filePath = _downloadedFiles[attachment['url']];
+        Navigator.of(context).pop(); // Close loading dialog
+      } catch (e) {
+        Navigator.of(context).pop(); // Close loading dialog
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error downloading PDF: ${e.toString()}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+    }
+    
+    if (filePath == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not load PDF file'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+    
+    // Show PDF viewer
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (BuildContext context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            width: MediaQuery.of(context).size.width * 0.9,
+            height: MediaQuery.of(context).size.height * 0.8,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppConstants.primaryColor,
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.picture_as_pdf,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          attachment['name'],
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close, color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
+                // PDF Viewer
+                Expanded(
+                  child: PDFView(
+                    filePath: filePath!,
+                    enableSwipe: true,
+                    swipeHorizontal: false,
+                    autoSpacing: true,
+                    pageFling: true,
+                    pageSnap: true,
+                    defaultPage: 0,
+                    fitPolicy: FitPolicy.BOTH,
+                    preventLinkNavigation: false,
+                    onError: (error) {
+                      print('PDF Error: $error');
+                      Navigator.of(context).pop();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Error loading PDF: $error'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    },
+                    onPageError: (page, error) {
+                      print('PDF Page Error: $error');
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showPdfViewerFromPath(String filePath, String fileName) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (BuildContext context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            width: MediaQuery.of(context).size.width * 0.9,
+            height: MediaQuery.of(context).size.height * 0.8,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppConstants.primaryColor,
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.picture_as_pdf,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          fileName,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close, color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
+                // PDF Viewer
+                Expanded(
+                  child: PDFView(
+                    filePath: filePath,
+                    enableSwipe: true,
+                    swipeHorizontal: false,
+                    autoSpacing: true,
+                    pageFling: true,
+                    pageSnap: true,
+                    defaultPage: 0,
+                    fitPolicy: FitPolicy.BOTH,
+                    preventLinkNavigation: false,
+                    onError: (error) {
+                      print('PDF Error: $error');
+                      Navigator.of(context).pop();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Error loading PDF: $error'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    },
+                    onPageError: (page, error) {
+                      print('PDF Page Error: $error');
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showImageViewerFromPath(String filePath, String fileName) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (BuildContext context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            width: MediaQuery.of(context).size.width * 0.9,
+            height: MediaQuery.of(context).size.height * 0.8,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppConstants.primaryColor,
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.image,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          fileName,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close, color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
+                // Image Viewer
+                Expanded(
+                  child: InteractiveViewer(
+                    child: Image.file(
+                      File(filePath),
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.error_outline,
+                                size: 48,
+                                color: Colors.red[300],
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Error loading image',
+                                style: TextStyle(
+                                  color: Colors.red[600],
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showImageViewer(Map<String, dynamic> attachment) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (BuildContext context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            width: MediaQuery.of(context).size.width * 0.9,
+            height: MediaQuery.of(context).size.height * 0.8,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppConstants.primaryColor,
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.image,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          attachment['name'],
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close, color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
+                // Image Viewer
+                Expanded(
+                  child: InteractiveViewer(
+                    child: Image.network(
+                      attachment['url'],
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.error_outline,
+                                size: 48,
+                                color: Colors.red[300],
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Error loading image',
+                                style: TextStyle(
+                                  color: Colors.red[600],
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Center(
+                          child: CircularProgressIndicator(
+                            value: loadingProgress.expectedTotalBytes != null
+                                ? loadingProgress.cumulativeBytesLoaded / 
+                                  loadingProgress.expectedTotalBytes!
+                                : null,
+                            color: AppConstants.primaryColor,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildAttachmentButton(Map<String, dynamic> attachment) {
     final bool isPDF = attachment['type'] == 'pdf';
+    final bool isImage = attachment['type'] == 'image';
     final bool isDownloading = _downloadProgress.containsKey(attachment['url']);
     final bool isDownloaded = _downloadedFiles.containsKey(attachment['url']);
     final double progress = _downloadProgress[attachment['url']] ?? 0.0;
@@ -475,19 +1072,19 @@ class _HomeScreenState extends State<HomeScreen> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // View Button
+        // View Button - Use eye icon for viewing
         IconButton(
-          onPressed: () => _handleAttachmentTap(attachment),
+          onPressed: () => _showInAppViewer(attachment),
           icon: Icon(
-            isPDF ? Icons.picture_as_pdf : Icons.image,
+            Icons.visibility,
             size: 20,
             color: AppConstants.primaryColor,
           ),
-          tooltip: 'View ${isPDF ? 'PDF' : 'Image'}',
+          tooltip: 'View ${isPDF ? 'PDF' : isImage ? 'Image' : 'File'}',
         ),
-        // Download Button
+        // Download Button - Use download icon
         IconButton(
-          onPressed: isDownloading ? null : () => _downloadFile(attachment),
+          onPressed: isDownloading ? null : () => _handleDownloadTap(attachment),
           icon: isDownloading
               ? SizedBox(
                   width: 20,
@@ -499,15 +1096,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 )
               : Icon(
-                  isDownloaded ? Icons.check_circle : Icons.download,
+                  isDownloaded ? Icons.refresh : Icons.download,
                   size: 20,
-                  color: isDownloaded ? Colors.green : AppConstants.primaryColor,
+                  color: isDownloaded ? Colors.orange : AppConstants.primaryColor,
                 ),
           tooltip: isDownloading 
               ? 'Downloading... ${(progress * 100).toInt()}%'
               : isDownloaded 
-                  ? 'Downloaded' 
-                  : 'Download',
+                  ? 'Re-download to phone' 
+                  : 'Download to phone',
         ),
       ],
     );
@@ -619,7 +1216,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildHomeContent() {
-    return SingleChildScrollView(
+    return RefreshIndicator(
+      onRefresh: _loadAnnouncements,
+      color: AppConstants.primaryColor,
+      child: SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -823,6 +1423,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               builder: (context) => _buildAnnouncementDetails(announcement),
                             );
                           },
+                          onLongPress: announcement['attachment'] != null ? () {
+                            _showAttachmentOptions(announcement['attachment']);
+                          } : null,
                           child: Padding(
                             padding: const EdgeInsets.all(16),
                             child: Column(
@@ -883,6 +1486,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
         ],
+      ),
       ),
     );
   }

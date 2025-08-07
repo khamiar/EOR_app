@@ -140,7 +140,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ElevatedButton(
               onPressed: () {
                 // TODO: Implement API call to update the field
-                setState(() {
+    setState(() {
                   switch (field) {
                     case 'name':
                       _nameController.text = controller.text;
@@ -157,12 +157,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   }
                 });
                 Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text('$title updated successfully'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
+          backgroundColor: Colors.green,
+        ),
+      );
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppConstants.primaryColor,
@@ -267,44 +267,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(AppConstants.defaultPadding),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // Profile Picture with Initials
-            Stack(
-              children: [
-                CircleAvatar(
-                  radius: 50,
-                  backgroundColor: AppConstants.primaryColor,
-                  backgroundImage: _localProfileImageUrl != null && _localProfileImageUrl!.isNotEmpty
-                      ? NetworkImage(_localProfileImageUrl!)
-                      : null,
-                  child: (_localProfileImageUrl == null || _localProfileImageUrl!.isEmpty)
-                      ? Text(
-                          _getInitials(_currentUser?.fullName, _currentUser?.email),
-                          style: const TextStyle(fontSize: 36, color: Colors.white),
-                        )
-                      : null,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Profile Picture with Initials
+              Stack(
+                children: [
+                  CircleAvatar(
+                    radius: 50,
+                    backgroundColor: AppConstants.primaryColor,
+                    backgroundImage: _localProfileImageUrl != null && _localProfileImageUrl!.isNotEmpty
+                        ? NetworkImage(_localProfileImageUrl!)
+                        : null,
+                    child: (_localProfileImageUrl == null || _localProfileImageUrl!.isEmpty)
+                        ? Text(
+                            _getInitials(_currentUser?.fullName, _currentUser?.email),
+                            style: const TextStyle(fontSize: 36, color: Colors.white),
+                          )
+                        : null,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _currentUser?.fullName ?? 'User',
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
                 ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _currentUser?.fullName ?? 'User',
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
               ),
-            ),
-            Text(
-              _currentUser?.email ?? '',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey[600],
+              Text(
+                _currentUser?.email ?? '',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey[600],
+                ),
               ),
-            ),
-            const SizedBox(height: 32),
-            
+              const SizedBox(height: 32),
+              
             // Profile Info Cards
             _buildInfoCard('Full Name', _nameController.text, Icons.person, 'name'),
             _buildInfoCard('Email', _emailController.text, Icons.email, 'email'),
