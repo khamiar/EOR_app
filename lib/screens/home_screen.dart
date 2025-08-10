@@ -14,7 +14,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_pdfview/flutter_pdfview.dart';
-import 'package:external_path/external_path.dart';
+import 'package:path_provider/path_provider.dart';
 import '../services/api_service.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -55,9 +55,8 @@ class _HomeScreenState extends State<HomeScreen> {
         announcements = apiAnnouncements.map((announcement) => {
           'id': announcement['id'],
           'title': announcement['title'],
-          'content': announcement['content'], // Use consistent field name
-          'description': announcement['content'], // Keep for backward compatibility
-          'date': DateTime.parse(announcement['createdAt'] ?? announcement['publishDate']),
+          'description': announcement['content'] ?? announcement['title'], // Use content if available, fallback to title
+          'date': DateTime.parse(announcement['postedAt'] ?? announcement['createdAt'] ?? DateTime.now().toIso8601String()),
           'type': _mapCategoryToType(announcement['category']),
           'attachment': announcement['attachmentUrl'] != null ? {
             'url': _buildFullUrl(announcement['attachmentUrl']),
@@ -324,9 +323,22 @@ class _HomeScreenState extends State<HomeScreen> {
       // Get the Downloads directory path
       String downloadPath;
       if (Platform.isAndroid) {
-        downloadPath = await ExternalPath.getExternalStoragePublicDirectory(ExternalPath.DIRECTORY_DOWNLOADS);
+        // Use app's documents directory for Android (more reliable)
+        final appDir = await getApplicationDocumentsDirectory();
+        downloadPath = '${appDir.path}/Downloads';
+        // Create directory if it doesn't exist
+        final dir = Directory(downloadPath);
+        if (!await dir.exists()) {
+          await dir.create(recursive: true);
+        }
       } else if (Platform.isIOS) {
-        downloadPath = await ExternalPath.getExternalStoragePublicDirectory(ExternalPath.DIRECTORY_DOWNLOADS);
+        // Use app's documents directory for iOS
+        final appDir = await getApplicationDocumentsDirectory();
+        downloadPath = '${appDir.path}/Downloads';
+        final dir = Directory(downloadPath);
+        if (!await dir.exists()) {
+          await dir.create(recursive: true);
+        }
       } else {
         // For Windows, use the app's download directory
         if (_downloadDirectory == null) {
@@ -464,11 +476,11 @@ class _HomeScreenState extends State<HomeScreen> {
           }
         } else {
           // For other platforms, try to open with external app
-          final uri = Uri.file(filePath);
-          if (await canLaunchUrl(uri)) {
-            await launchUrl(uri);
-          } else {
-            throw Exception('Could not open file');
+        final uri = Uri.file(filePath);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri);
+        } else {
+          throw Exception('Could not open file');
           }
         }
       } else {
@@ -633,10 +645,10 @@ class _HomeScreenState extends State<HomeScreen> {
         _showImageViewer(attachment);
       } else {
         // For other file types, try to open externally
-        final url = Uri.parse(attachment['url']);
-        if (await canLaunchUrl(url)) {
-          await launchUrl(url);
-        } else {
+    final url = Uri.parse(attachment['url']);
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url);
+    } else {
           throw Exception('Could not open file');
         }
       }
@@ -1310,7 +1322,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       });
                     },
                   ),
-                  const SizedBox(width: 8),
+                   const SizedBox(width: 8),
                   _buildCategoryCard(
                     'Announce',
                     Icons.campaign,
@@ -1369,7 +1381,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     )
                   : Column(
                       children: [
-                        const SizedBox(height: 12),
+          const SizedBox(height: 12),
           
           filteredAnnouncements.isEmpty
               ? Center(
@@ -1483,7 +1495,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     );
                   },
                 ),
-                      ],
+        ],
                     ),
         ],
       ),

@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 
 class AppConstants {
   // API Configuration
-  static const String apiBaseUrl = 'http://192.168.245.151:8080/api';
+  static const String apiBaseUrl = 'http://192.168.1.3:8080/api';
   // static const String apiBaseUrl = 'http://localhost:8080/api';
-  static const String baseUrl = 'http://192.168.245.151:8080';
+  static const String baseUrl = 'http://192.168.1.3:8080';
   // static const String baseUrl = 'http://localhost:8080';
   
   // App Configuration
